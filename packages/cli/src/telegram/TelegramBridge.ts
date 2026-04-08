@@ -1,0 +1,655 @@
+// src/telegram/TelegramBridge.ts
+import { Bot, InputFile } from "grammy";
+import { HiruAgent } from "../agent/Agent.js";
+import { ProjectContext } from "shared";
+import { TelegramFormatter, TOOL_EMOJI } from "./TelegramFormatter.js";
+import { getFilePath, ensureHiruDirs, HIRU_DIR } from "../utils/paths.js";
+import fetch from "node-fetch";
+
+export interface TelegramBridgeConfig {
+  botToken: string;
+  allowedChatId: string;
+}
+
+export class TelegramBridge {
+  private bot: Bot;
+  private formatter = new TelegramFormatter();
+  private isProcessing = false;
+  private currentChatId: number | null = null;
+
+  // Per-run tracking
+  private toolCallsInRun = 0;
+  private doneHandled = false;
+  private responseBuffer = "";
+  private flushTimer: ReturnType<typeof setTimeout> | null = null;
+  private lastFlushTime = 0;
+  private isFlushing = false;
+  private currentStatusMsgId: number | null = null;
+  private currentResponseMsgId: number | null = null;
+  private pendingPlanResolve: ((v: boolean) => void) | null = null;
+  private pendingPermResolve: ((v: boolean) => void) | null = null;
+  private telegramHistory: any[] = [];
+  private lastFlushedText = "";
+  private lastSealTime = 0;
+
+  // Queue: collect files to send AFTER runStreaming completes (avoids race conditions)
+  private pendingScreenshots: string[] = [];
+  private pendingFiles: Array<{ path: string; caption?: string }> = [];
+
+  constructor(
+    private agent: HiruAgent,
+    private ctx: ProjectContext,
+    private config: TelegramBridgeConfig
+  ) {
+    this.bot = new Bot(config.botToken);
+    this.telegramHistory = [...agent.messages]; // Pre-populate from restored session
+    this.setupErrorHandler();
+    this.setupGuard();
+    this.setupCommands();
+    this.setupMessageHandler();
+    this.setupAgentListeners();
+  }
+
+  private setupErrorHandler() {
+    this.bot.catch((err) => {
+      console.error(`  ❌ Telegram Error: ${err.message}`);
+    });
+  }
+
+  private resetRunState() {
+    this.toolCallsInRun = 0;
+    this.doneHandled = false;
+    this.responseBuffer = "";
+    this.pendingScreenshots = [];
+    this.pendingFiles = [];
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    this.currentResponseMsgId = null;
+    this.lastFlushedText = "";
+    this.lastFlushTime = 0;
+  }
+
+  private async registerTelegramTools() {
+    const bridge = this;
+    const { z } = await import("zod");
+    const { internalTools } = await import("../tools/index.js");
+
+    const originalScreenshot = internalTools.take_screenshot;
+    if (originalScreenshot) {
+      internalTools.take_screenshot = {
+        ...originalScreenshot,
+        execute: async (args: any) => {
+          const result = await originalScreenshot.execute(args);
+          // Parse the returned JSON and queue the screenshot path
+          try {
+            const parsed = typeof result === "string" ? JSON.parse(result) : result;
+            if (parsed?.path) {
+              console.log(`  📸 Screenshot captured: ${parsed.path}`);
+              bridge.pendingScreenshots.push(parsed.path);
+            }
+          } catch {}
+          return result;
+        },
+      };
+    }
+
+    internalTools.save_to_public = {
+      description: `Save a file to Hiru's permanent public folder (~/.hiru/public).
+Use this for files the user wants to keep globally or access via Telegram sharing.`,
+      parameters: z.object({
+        path: z.string().describe("Source file path to save to public folder"),
+        filename: z.string().optional().describe("Optional new filename in public folder"),
+      }),
+      execute: async (args: any) => {
+        const { path: srcPath, filename } = args;
+        const fs = await import("node:fs/promises");
+        const pathMod = await import("path");
+        
+        const publicDir = pathMod.join(HIRU_DIR, "public");
+        await fs.mkdir(publicDir, { recursive: true });
+        
+        const resolvedSrc = pathMod.resolve(srcPath);
+        const baseName = filename || pathMod.basename(resolvedSrc);
+        const destPath = pathMod.join(publicDir, baseName);
+        
+        await fs.copyFile(resolvedSrc, destPath);
+        return `✅ File saved to public folder: ${destPath}`;
+      },
+    };
+
+    internalTools.send_to_chat = {
+      description: `Send a file to the user's Telegram chat.
+Use this AFTER creating/writing a file to deliver it to the user.
+Works for: documents (.txt, .pdf, .docx), images (.png, .jpg), code files, etc.
+Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
+      parameters: z.object({
+        path: z.string().describe("File path to send"),
+        caption: z.string().optional().describe("Optional caption for the file"),
+      }),
+      execute: async (args: any) => {
+        const { path: filePath, caption } = args;
+        bridge.pendingFiles.push({ path: filePath, caption });
+        return `✓ File queued for sending: ${filePath}`;
+      },
+    };
+  }
+
+  private setupGuard() {
+    this.bot.use(async (ctx, next) => {
+      if (String(ctx.chat?.id) !== this.config.allowedChatId) {
+        await ctx.reply("⛔ Access denied.");
+        return;
+      }
+      await next();
+    });
+  }
+
+  private setupCommands() {
+    this.bot.command("help", async (ctx) => {
+      await ctx.reply(
+        `*Hiru — Remote Control*\n\n` +
+        `Example commands:\n` +
+        `• \`open notepad\`\n` +
+        `• \`type hello world\`\n` +
+        `• \`press ctrl+s\`\n` +
+        `• \`screenshot\` — capture and send screen\n` +
+        `• \`open chrome youtube.com\`\n` +
+        `• \`create file notes.txt content: buy milk\`\n` +
+        `• \`run npm install\`\n` +
+        `• \`make a report then send it here\`\n\n` +
+        `*Commands:*\n` +
+        `/status — check status\n` +
+        `/stop — cancel current task\n` +
+        `/clear — clear telegram history\n` +
+        `/help — show this help`,
+        { parse_mode: "Markdown" }
+      );
+    });
+
+    this.bot.command("status", async (ctx) => {
+      const memMB = Math.round(process.memoryUsage().heapUsed / 1024 / 1024);
+      await ctx.reply(
+        `*Status:* ${this.isProcessing ? "⚡ Processing task..." : "✅ Ready"}\n` +
+        `*Project:* \`${this.ctx.root}\`\n` +
+        `*Model:* \`${(this.agent as any).config?.model || "unknown"}\`\n` +
+        `*Memory:* ${memMB}MB`,
+        { parse_mode: "Markdown" }
+      );
+    });
+
+    this.bot.command("stop", async (ctx) => {
+      if (!this.isProcessing) { await ctx.reply("No active task."); return; }
+      (this.agent as any).currentAbortController?.abort();
+      this.isProcessing = false;
+      await ctx.reply("🛑 Task cancelled.");
+    });
+
+    this.bot.command("plan", async (ctx) => {
+      const arg = ctx.match?.toLowerCase().trim();
+      if (arg === "on" || arg === "off") {
+        this.agent.updateConfig({ ...(this.agent as any).config, planMode: arg === "on" });
+        await ctx.reply(`📋 Plan mode: *${arg.toUpperCase()}*`, { parse_mode: "Markdown" });
+      }
+    });
+
+    this.agent.on("planApproved", () => {
+      this.sealResponse();
+    });
+
+    this.bot.command("clear", async (ctx) => {
+      this.telegramHistory = [];
+      await ctx.reply("🧹 Telegram history cleared. Context is now fresh.");
+    });
+  }
+
+  private setupMessageHandler() {
+    this.bot.on("message:text", async (ctx) => {
+      this.currentChatId = ctx.chat.id;
+      const text = ctx.message.text.toLowerCase().trim();
+
+      if (this.pendingPlanResolve || this.pendingPermResolve) {
+        const isYes = ["ya", "y", "yes", "ok", "continue", "sip", "yup", "gas", "✅ yes, continue"].includes(text);
+        const isNo = ["tidak", "n", "no", "cancel", "stop", "❌ cancel"].includes(text);
+
+        if (isYes || isNo) {
+          if (this.pendingPlanResolve) {
+            const resolve = this.pendingPlanResolve;
+            this.pendingPlanResolve = null;
+            if (isYes && this.currentChatId && this.currentStatusMsgId) {
+              try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, "⚡ *Starting execution...*", { parse_mode: "Markdown" }); } catch {}
+            }
+            resolve(isYes);
+          } else if (this.pendingPermResolve) {
+            const resolve = this.pendingPermResolve;
+            this.pendingPermResolve = null;
+            resolve(isYes);
+          }
+          return;
+        }
+      }
+
+      if (this.isProcessing) {
+        await ctx.reply("⏳ Still processing. Wait or /stop first.");
+        return;
+      }
+
+      this.currentChatId = ctx.chat.id;
+      this.isProcessing = true;
+      this.resetRunState();
+
+      const ack = await ctx.reply("⏳ _Thinking..._", { parse_mode: "Markdown" });
+      this.currentStatusMsgId = ack.message_id;
+
+      try {
+        await this.agent.runStreaming(ctx.message.text, this.ctx, this.telegramHistory);
+        this.telegramHistory = [...this.agent.messages];
+
+        if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+        await this.flushResponse();
+
+        const sentPaths = new Set<string>();
+        for (const ssPath of this.pendingScreenshots) {
+          if (sentPaths.has(ssPath)) continue;
+          sentPaths.add(ssPath);
+          await this.sendScreenshot(ssPath);
+        }
+        for (const file of this.pendingFiles) {
+          if (sentPaths.has(file.path)) continue;
+          sentPaths.add(file.path);
+          await this.sendFileToChat(file.path, file.caption);
+        }
+        
+        // Final check: if no response msg was sent and no buffer exists, notify user
+        const finalFormatted = this.formatter.formatResponse(this.responseBuffer);
+        if (!this.currentResponseMsgId && !finalFormatted) {
+           await this.sendText("✅ Done (Internal process complete, no text output produced).");
+        }
+
+        const { saveSession } = await import("../memory/SessionManager.js");
+        await saveSession({
+          id: "telegram-session",
+          name: "Telegram Control",
+          projectRoot: this.ctx.root,
+          messages: JSON.stringify(this.agent.messages),
+          tokenUsage: JSON.stringify(this.agent.tokenUsage),
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        }).catch(err => console.error("  ❌ Failure saving Telegram session:", err));
+
+      } catch (e: any) {
+        await this.sendText(`❌ Error: ${e.message}`);
+      } finally {
+        this.isProcessing = false;
+        if (this.currentStatusMsgId && this.currentChatId) {
+          try { await this.bot.api.deleteMessage(this.currentChatId, this.currentStatusMsgId); } catch {}
+          this.currentStatusMsgId = null;
+        }
+        this.currentChatId = null;
+      }
+    });
+
+    this.bot.on(["message:document", "message:photo", "message:video", "message:audio"], async (ctx) => {
+      if (this.isProcessing) {
+        await ctx.reply("⏳ Still processing. Wait or /stop first.");
+        return;
+      }
+
+      this.currentChatId = ctx.chat.id;
+      this.isProcessing = true;
+      this.resetRunState();
+
+      const ack = await ctx.reply("⏳ _Receiving file..._", { parse_mode: "Markdown" });
+      this.currentStatusMsgId = ack.message_id;
+
+      try {
+        await ensureHiruDirs();
+
+        let file;
+        let originalName = `file-${Date.now()}`;
+
+        if (ctx.message.document) {
+          file = await ctx.getFile();
+          originalName = ctx.message.document.file_name || `doc-${Date.now()}`;
+        } else if (ctx.message.photo) {
+          const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
+          file = await ctx.api.getFile(largestPhoto.file_id);
+          originalName = `photo-${Date.now()}.jpg`;
+        } else if (ctx.message.video) {
+          file = await ctx.api.getFile(ctx.message.video.file_id);
+          originalName = ctx.message.video.file_name || `video-${Date.now()}.mp4`;
+        } else if (ctx.message.audio) {
+          file = await ctx.api.getFile(ctx.message.audio.file_id);
+          originalName = ctx.message.audio.file_name || `audio-${Date.now()}.mp3`;
+        }
+
+        if (!file) throw new Error("Could not retrieve file information.");
+
+        // Update status: Downloading
+        if (this.currentStatusMsgId && this.currentChatId) {
+          try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, `⏳ *Downloading:* \`${originalName}\`...`, { parse_mode: "Markdown" }); } catch {}
+        }
+
+        const destPath = getFilePath(originalName);
+        const url = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`;
+
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`Failed to download file: ${response.statusText}`);
+        
+        const arrayBuffer = await response.arrayBuffer();
+        const { writeFile } = await import("node:fs/promises");
+        await writeFile(destPath, Buffer.from(arrayBuffer));
+
+        // Update status: Processing
+        if (this.currentStatusMsgId && this.currentChatId) {
+          try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, `⏳ *Processing:* \`${originalName}\`...`, { parse_mode: "Markdown" }); } catch {}
+        }
+
+        const caption = ctx.message.caption ? ctx.message.caption.trim() : "";
+        
+        if (!caption) {
+          await ctx.reply(`✅ **File received**\n*Path:* \`${destPath}\``, { parse_mode: "Markdown" });
+        }
+
+        const isImage = /\.(jpe?g|png|webp|gif)$/i.test(originalName);
+        let agentInput: string | any[] = "";
+
+        if (isImage) {
+          const { readFile } = await import("node:fs/promises");
+          const imageBuffer = await readFile(destPath);
+          
+          agentInput = [
+            { 
+              type: "text", 
+              text: `[USER SENT AN IMAGE]\nFile: ${originalName}\nSaved at: ${destPath}\n${caption ? `User Instruction: "${caption}"` : "Please describe what you see in this image and ask for instructions."}\n\nIMPORTANT: Use your vision capabilities to accurately process this image. Do not hallucinate.`
+            },
+            { type: "image", image: imageBuffer }
+          ];
+        } else {
+          let agentPrompt = `[FILE RECEIVED]\nFile Name: ${originalName}\nSaved at: ${destPath}\n`;
+          agentPrompt += caption ? `User Instruction: "${caption}"\n\nPlease process this file immediately.` : `Acknowledge this file and wait for further instructions.`;
+          agentInput = agentPrompt;
+        }
+        
+        await this.agent.runStreaming(agentInput, this.ctx, this.telegramHistory);
+        this.telegramHistory = [...this.agent.messages];
+        await this.flushResponse();
+
+      } catch (e: any) {
+        await ctx.reply(`❌ Failed to save file: ${e.message}`);
+      } finally {
+        this.isProcessing = false;
+        this.currentChatId = null;
+      }
+    });
+
+    this.bot.callbackQuery("plan_approve", async (ctx) => {
+      try { await ctx.answerCallbackQuery("✅ Approved!"); } catch (e) {}
+      try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
+      if (this.pendingPlanResolve) {
+        const resolve = this.pendingPlanResolve;
+        this.pendingPlanResolve = null;
+        if (this.currentChatId && this.currentStatusMsgId) {
+          try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, "⚡ *Starting execution...*", { parse_mode: "Markdown" }); } catch {}
+        }
+        resolve(true);
+      } else {
+        this.agent.resolvePlanApproval(true);
+      }
+    });
+
+    this.bot.callbackQuery("plan_reject", async (ctx) => {
+      try { await ctx.answerCallbackQuery("❌ Cancelled."); } catch (e) {}
+      try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
+      this.agent.resolvePlanApproval(false);
+      this.isProcessing = false;
+    });
+
+    this.bot.callbackQuery(/^perm_approve:(.+)$/, async (ctx) => {
+      const toolName = ctx.match[1];
+      try { await ctx.answerCallbackQuery(`✅ Executing ${toolName}`); } catch {}
+      try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
+      const resolve = (this.agent as any).pendingPermResolve;
+      if (resolve) {
+        (this.agent as any).pendingPermResolve = null;
+        resolve(true);
+      }
+    });
+
+    this.bot.callbackQuery(/^perm_reject:(.+)$/, async (ctx) => {
+      const toolName = ctx.match[1];
+      try { await ctx.answerCallbackQuery(`❌ Rejected ${toolName}`); } catch {}
+      try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
+      if (this.pendingPermResolve) {
+        const resolve = (this.agent as any).pendingPermResolve;
+        (this.agent as any).pendingPermResolve = null;
+        resolve(false);
+      }
+    });
+  }
+
+  private async flushResponse(force = false): Promise<void> {
+    if (!this.responseBuffer.trim() || !this.currentChatId) return;
+    if (this.isFlushing) return;
+    const now = Date.now();
+    if (!force && now - this.lastFlushTime < 1500) {
+      if (this.flushTimer) clearTimeout(this.flushTimer);
+      this.flushTimer = setTimeout(() => this.flushResponse(), 1500 - (now - this.lastFlushTime));
+      return;
+    }
+    this.isFlushing = true;
+    try {
+      const text = this.responseBuffer.trim();
+      const formatted = this.formatter.formatResponse(text);
+      if (formatted.length > 4000) {
+        this.responseBuffer = "";
+        this.currentResponseMsgId = null;
+        this.isFlushing = false;
+        await this.sendText(formatted);
+        return;
+      }
+      if (this.currentResponseMsgId && text !== this.lastFlushedText) {
+        await this.bot.api.editMessageText(this.currentChatId, this.currentResponseMsgId, formatted, { parse_mode: "Markdown" });
+      } else if (!this.currentResponseMsgId) {
+        const msg = await this.bot.api.sendMessage(this.currentChatId, formatted, { parse_mode: "Markdown" });
+        this.currentResponseMsgId = msg.message_id;
+      }
+      this.lastFlushedText = text;
+      this.lastFlushTime = Date.now();
+    } catch (e: any) {
+       // Only clear if it's NOT the "message is not modified" error
+       if (!e.message?.includes("message is not modified")) {
+         this.currentResponseMsgId = null;
+       }
+    } finally {
+      this.isFlushing = false;
+    }
+  }
+
+  private setupAgentListeners() {
+    this.agent.on("status", async (msg: string) => {
+      if (this.currentChatId && this.currentStatusMsgId) {
+        try {
+          await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, `⏳ *${msg}*`, { parse_mode: "Markdown" });
+        } catch (e) {}
+      }
+    });
+
+    this.agent.on("token", (t: string) => {
+      this.responseBuffer += t;
+      if (this.flushTimer) clearTimeout(this.flushTimer);
+      this.flushTimer = setTimeout(() => this.flushResponse(), 400);
+    });
+
+    this.agent.on("toolCall", async (chunk: any) => {
+      this.toolCallsInRun++;
+      if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+      await this.flushResponse();
+      if (this.currentChatId && this.currentStatusMsgId) {
+        const spinners = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+        const spinner = spinners[this.toolCallsInRun % spinners.length];
+        try {
+          await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, `${spinner} *Executing Step ${this.toolCallsInRun}:* \`${chunk.toolName}\`...`, { parse_mode: "Markdown" });
+        } catch (e) {}
+      }
+    });
+
+    this.agent.on("toolResult", async (chunk: any) => {
+      if (chunk.toolName === "take_screenshot" || chunk.toolName === "send_to_chat") return;
+      const rawResult = chunk.result;
+      const resultStr = typeof rawResult === "string" ? rawResult : JSON.stringify(rawResult ?? "");
+      if (resultStr.includes("[ERROR]")) {
+        // Kalau error, seal buffer dulu baru kirim pesan error terpisah
+        await this.sealResponse();
+        const errMsg = resultStr.split("\n").slice(0, 3).join("\n");
+        await this.sendText(`❌ ${errMsg.slice(0, 300)}`);
+      }
+      // HAPUS sealResponse() di sini — biarkan "done" yang handle seal akhir
+    });
+
+    this.agent.on("planReady", async () => {
+      await this.sealResponse();
+    });
+
+    this.agent.on("awaitingPlanApproval", async (plan: any) => {
+      if (!this.currentChatId) return;
+      if (this.currentStatusMsgId) {
+        try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, "📋 *Waiting for plan approval...*", { parse_mode: "Markdown" }); } catch {}
+      }
+      const planText = this.formatter.formatPlan(plan);
+      await this.sendText(planText);
+      this.pendingPlanResolve = (v: boolean) => this.agent.resolvePlanApproval(v);
+      await this.bot.api.sendMessage(this.currentChatId, "📋 **Is this plan correct?**\n(Reply 'Yes' or use buttons)", {
+        parse_mode: "Markdown",
+        reply_markup: {
+          inline_keyboard: [[
+            { text: "✅ Yes, Continue", callback_data: "plan_approve" },
+            { text: "❌ Cancel",         callback_data: "plan_reject" },
+          ]],
+        },
+      });
+    });
+
+    this.agent.on("modelWarning", async (msg: string) => {
+      await this.sendText(`⚠️ ${msg}`);
+    });
+
+    this.agent.on("permissionRequest", async (req: any) => {
+      if (!this.currentChatId) return;
+      (this.agent as any).pendingPermResolve = req.resolve;
+      const emoji = (TOOL_EMOJI as any)[req.toolName] ?? "⚙️";
+      const argStr = JSON.stringify(req.args).slice(0, 100);
+      await this.bot.api.sendMessage(this.currentChatId, 
+        `🛡️ *Permission Required*\n\n` +
+        `${emoji} *Tool:* \`${req.toolName}\`\n` +
+        `📦 *Args:* \`${argStr}\`\n\n` +
+        `Allow this action?`, 
+        { 
+          parse_mode: "Markdown",
+          reply_markup: {
+            inline_keyboard: [[
+              { text: "✅ Allow", callback_data: `perm_approve:${req.toolName}` },
+              { text: "❌ Deny",  callback_data: `perm_reject:${req.toolName}` },
+            ]],
+          },
+        }
+      );
+    });
+
+    this.agent.on("error", async (e: Error) => {
+      await this.sendText(`❌ *Error:* ${e.message}`);
+    });
+
+    this.agent.on("done", async () => {
+      // Guard: jangan seal kalau buffer kosong (hindari double-seal)
+      if (!this.responseBuffer.trim() && !this.currentResponseMsgId) return;
+      await this.sealResponse();
+    });
+  }
+
+  private async sealResponse() {
+    // Guard: debounce seal — jangan seal 2x dalam 200ms
+    const now = Date.now();
+    if (now - this.lastSealTime < 200) return;
+    this.lastSealTime = now;
+
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
+    
+    // Wait for any ongoing flush to finish (max 2 seconds)
+    for (let i = 0; i < 20; i++) {
+      if (!this.isFlushing) break;
+      await new Promise(r => setTimeout(r, 100));
+    }
+    
+    await this.flushResponse(true);
+    this.currentResponseMsgId = null;
+    this.responseBuffer = "";
+    this.lastFlushedText = "";
+  }
+
+  private async sendText(text: string): Promise<void> {
+    if (!this.currentChatId || !text.trim()) return;
+    const chunks = this.chunkText(text, 4000);
+    for (const chunk of chunks) {
+      try {
+        await this.bot.api.sendMessage(this.currentChatId, chunk, { parse_mode: "Markdown" });
+      } catch {
+        try { await this.bot.api.sendMessage(this.currentChatId, chunk); } catch {}
+      }
+      if (chunks.length > 1) await new Promise(r => setTimeout(r, 150));
+    }
+  }
+
+  private async sendScreenshot(filePath: string): Promise<void> {
+    if (!this.currentChatId) return;
+    try {
+      const { readFile } = await import("node:fs/promises");
+      const buffer = await readFile(filePath);
+      await this.bot.api.sendPhoto(this.currentChatId, new InputFile(buffer, `screenshot-${Date.now()}.png`));
+    } catch (e: any) {
+      await this.sendText(`❌ Failed to send screenshot: ${e.message}`);
+    }
+  }
+
+  async sendFileToChat(filePath: string, caption?: string): Promise<void> {
+    if (!this.currentChatId) throw new Error("No active Telegram chat");
+    const pathMod = await import("path");
+    const { readFile } = await import("node:fs/promises");
+    const resolved = pathMod.default.resolve(filePath);
+    const buffer = await readFile(resolved);
+    const filename = pathMod.default.basename(resolved);
+    const ext = pathMod.default.extname(resolved).toLowerCase();
+    if ([".png", ".jpg", ".jpeg", ".gif", ".webp"].includes(ext)) {
+      await this.bot.api.sendPhoto(this.currentChatId, new InputFile(buffer, filename), { caption: caption || undefined });
+    } else {
+      await this.bot.api.sendDocument(this.currentChatId, new InputFile(buffer, filename), { caption: caption || undefined });
+    }
+  }
+
+  private chunkText(text: string, maxLen: number): string[] {
+    if (text.length <= maxLen) return [text];
+    const chunks: string[] = [];
+    let rem = text;
+    while (rem.length > 0) {
+      let cut = maxLen;
+      const nl = rem.lastIndexOf("\n", maxLen);
+      if (nl > maxLen * 0.6) cut = nl + 1;
+      chunks.push(rem.slice(0, cut));
+      rem = rem.slice(cut);
+    }
+    return chunks;
+  }
+
+  async start(): Promise<void> {
+    await this.registerTelegramTools();
+    try {
+      await this.bot.api.sendMessage(this.config.allowedChatId, `🟢 *Hiru online*\n\`${this.ctx.root}\`\nSend any command — /help for assistance.`, { parse_mode: "Markdown" });
+    } catch {}
+    await this.bot.start({ onStart: () => {} });
+  }
+
+  async stop(): Promise<void> {
+    try {
+      await this.bot.api.sendMessage(this.config.allowedChatId, "🔴 *Hiru offline.*", { parse_mode: "Markdown" });
+    } catch {}
+    await this.bot.stop();
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "name": "@hiru/cli",
+  "version": "0.1.2",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "hiru": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@nut-tree-fork/nut-js": "^4.2.6",
+    "axios": "^1.14.0",
+    "cheerio": "^1.2.0",
+    "node-html-markdown": "^2.0.0",
+    "shared": "*"
+  }
+}
