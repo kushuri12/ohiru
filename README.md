@@ -60,8 +60,6 @@ powershell -c "irm https://o-hiru.ai/install.ps1 | iex"
 Once installed, simply run the assistant from any directory in your terminal:
 
 ```bash
-ohiru
-# or
 hiru
 ```
 
