@@ -1,6 +1,6 @@
 {
   "name": "@kushuri12/ohiru",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Agentic coding assistant for your terminal",
   "bin": {
     "ohiru": "./packages/cli/dist/index.js",
