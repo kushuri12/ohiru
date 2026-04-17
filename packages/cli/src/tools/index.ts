@@ -4,6 +4,10 @@ import path from "path";
 import { execa } from "execa";
 import { EventEmitter } from "events";
 import { writeFileWithProgress, globalFileProgress, FileProgressEvent } from "./FileProgress.js";
+import { ToolValidator } from "./ToolValidator.js";
+import { ErrorHandler } from "./ErrorHandler.js";
+import { resolveSafePath, isSafePath } from "../utils/paths.js";
+import { UpdatePlanTool } from "./UpdatePlanTool.js";
 
 export const toolEvents = new EventEmitter();
 
@@ -42,25 +46,53 @@ export const readFileTool: any = {
   parameters: z.object({
     path: z.string().describe("Absolute or relative path to the file"),
     start_line: z.number().optional().describe("Optional: start reading from this line"),
-    end_line: z.number().optional().describe("Optional: stop reading at this line")
+    end_line: z.number().optional().describe("Optional: stop reading at this line"),
+    skeleton_mode: z.boolean().optional().describe("If true, returns only the AST skeleton (class, functions) extracting code structure. Hugely saves tokens.")
   }),
   execute: async (args: any) => {
-    const { path: fPath, start_line, end_line } = args;
+    const { path: fPath, start_line, end_line, skeleton_mode } = args;
     try {
-      const absolutePath = path.resolve(process.cwd(), fPath);
+      const absolutePath = resolveSafePath(fPath);
       
       // Safety Checks
       const stats = await fs.stat(absolutePath).catch(() => null);
       if (!stats) return `Error: File not found at ${fPath}`;
+
+      // Security check (Allow reading from CWD or ~/.hiru)
+      if (!isSafePath(absolutePath)) {
+        return `Error: Permission denied for reading path: ${fPath}. You can only read within the project directory or ~/.hiru/`;
+      }
+
       if (stats.isDirectory()) return `Error: ${fPath} is a directory. Use list_files to see its content.`;
       
       // Size limit (2MB) - prevent token blowup and hangs
       const MAX_SIZE = 2 * 1024 * 1024; 
-      if (stats.size > MAX_SIZE && start_line === undefined) {
+      if (stats.size > MAX_SIZE && start_line === undefined && !skeleton_mode) {
          return `Error: File is too large (${(stats.size/1024/1024).toFixed(2)} MB). Please use start_line and end_line to read it in segments.`;
       }
 
       const content = await fs.readFile(absolutePath, "utf8");
+
+      if (skeleton_mode) {
+        const ext = path.extname(absolutePath).toLowerCase();
+        if (['.ts', '.js', '.jsx', '.tsx', '.py'].includes(ext)) {
+          const lines = content.split('\n');
+          const skeleton = [];
+          for (let i = 0; i < lines.length; i++) {
+             const line = lines[i];
+             // Grab definitions: class, function, async function, interface, type, exports
+             if (/^\s*(export\s+)?(default\s+)?(async\s+)?(class|function|interface|type)\b/.test(line) ||
+                 /^\s*(export\s+)?(const|let|var)\s+\w+\s*=/.test(line) ||
+                 /^\s*def\s+/.test(line)) {
+                 skeleton.push(`${i + 1}: ${line.slice(0, 100).trim()}`);
+             }
+          }
+          if (skeleton.length > 0) {
+             return `[SKELETON MODE] Core structure of ${fPath}:\n` + skeleton.join('\n') + `\n\nTo view implementations, use read_file with start_line and end_line based on the line numbers above.`;
+          }
+        }
+      }
+
       if (start_line !== undefined || end_line !== undefined) {
         const lines = content.split('\n');
         const start = start_line ? Math.max(0, start_line - 1) : 0;
@@ -69,7 +101,8 @@ export const readFileTool: any = {
       }
       return content;
     } catch (e: any) {
-      return `Error reading file: ${e.message}`;
+      const structured = ErrorHandler.handle("read_file", e);
+      return ErrorHandler.format(structured);
     }
   }
 };
@@ -96,19 +129,23 @@ Example: { "path": "src/index.html", "content": "<html>..." }`,
       throw new Error(`write_file: "content" must be a string, got ${typeof content}`);
     }
 
-    const absolutePath = path.resolve(process.cwd(), fPath.trim());
+    const absolutePath = resolveSafePath(fPath);
     
-    // Security check
-    if (!absolutePath.startsWith(process.cwd())) {
-      throw new Error(`write_file: path outside working directory: ${fPath}`);
+    // Security check (Allow writing to CWD or ~/.hiru)
+    if (!isSafePath(absolutePath)) {
+      throw new Error(`write_file: permission denied for path: ${fPath}. You can only write within the project directory or ~/.hiru/file/`);
     }
 
     try {
       await writeFileWithProgress(absolutePath, content, "write", currentProgressCallback || undefined);
       
-      // Verify
-      const stats = await fs.stat(absolutePath);
-      return `Successfully wrote ${stats.size} bytes to ${fPath}`;
+      // ✨ Post-write verification
+      const validation = await ToolValidator.validateWrite(absolutePath, content);
+      if (!validation.valid) {
+        throw new Error(`write_file completed but verification failed: ${validation.message}`);
+      }
+
+      return validation.message;
     } catch (e: any) {
       throw new Error(`write_file failed: ${e.message}`);
     }
@@ -131,7 +168,13 @@ IMPORTANT: Use this instead of rewrite_file for small changes. Provide exact lin
     const { start_line, end_line, old_content, new_content } = args;
     
     try {
-      const absolutePath = path.resolve(fPath);
+      const absolutePath = resolveSafePath(fPath);
+
+      // Security check
+      if (!isSafePath(absolutePath)) {
+        throw new Error(`edit_file: permission denied for path: ${fPath}. You can only edit within the project directory or ~/.hiru/`);
+      }
+
       const content = await fs.readFile(absolutePath, "utf8");
       const lines = content.split("\n");
 
@@ -191,7 +234,13 @@ export const listFilesTool: any = {
     const dPath = (args.path ?? args.directory ?? args.folder ?? args.dir ?? ".") as string;
     const recursive = !!args.recursive;
     try {
-      const p = path.resolve(dPath);
+      const p = resolveSafePath(dPath);
+      
+      // Security check
+      if (!isSafePath(p)) {
+        return `Error: Permission denied for listing path: ${dPath}. You can only list within the project directory or ~/.hiru/`;
+      }
+
       const entries = await fs.readdir(p, { recursive });
       return `Files:\n${entries.join('\n')}`;
     } catch (e: any) {
@@ -202,9 +251,33 @@ export const listFilesTool: any = {
 
 export const runShellTool: any = {
   requiresPermission: (args: any) => {
-    const cmd = (args.command || args.cmd || "").toLowerCase();
-    const dangerous = ["rm", "del", "mkdir", "rmdir", "cp", "mv", "npm publish", "kill", "sudo", "docker", "chmod", "chown", "reboot"];
-    return dangerous.some(d => cmd.startsWith(d + " ") || cmd === d);
+    const cmd = (args.command || args.cmd || "").trim().toLowerCase();
+
+    // mkdir -p adalah safe untuk project creation — jangan block
+    // rmdir juga relatif safe — hanya hapus direktori kosong
+    // cp dan mv dibutuhkan saat agent merestrukturisasi file
+    const dangerous = [
+      "rm ", "rm\t",          // rm tapi bukan rmdir
+      "del ",
+      "npm publish",
+      "kill ",
+      "sudo ",
+      "docker ",
+      "chmod ",
+      "chown ",
+      "reboot",
+      "shutdown",
+      "format",
+      "dd ",
+    ];
+
+    // Exact match untuk single-word commands berbahaya
+    const dangerousExact = ["rm", "del", "reboot", "shutdown"];
+
+    return (
+      dangerous.some((d) => cmd.startsWith(d)) ||
+      dangerousExact.includes(cmd)
+    );
   },
   description: `Execute a shell command. 
 IMPORTANT: 
@@ -278,7 +351,7 @@ IMPORTANT:
 
     const isSlowCommand = SLOW_BUT_OK.some(p => p.test(command));
     const timeout = isSlowCommand ? 120000 : Math.min(Number(args.timeout_ms ?? 30000), 60000);
-    const cwd = args.cwd ? path.resolve(args.cwd) : process.cwd();
+    const cwd = args.cwd ? resolveSafePath(args.cwd) : process.cwd();
 
     try {
       const proc = execa(command, {
@@ -368,11 +441,17 @@ export const searchFilesTool: any = {
   }),
   execute: async (args: any) => {
     const { pattern, path: searchPath = ".", file_pattern } = args;
-    
+    const resolvedSearchPath = resolveSafePath(searchPath);
+
+    // Security check
+    if (!isSafePath(resolvedSearchPath)) {
+      return `Error: Permission denied for searching path: ${searchPath}. You can only search within the project directory or ~/.hiru/`;
+    }
+
     // Coba ripgrep dulu, fallback ke grep
     const cmd = file_pattern
-      ? `rg --no-heading -n "${pattern}" --glob "${file_pattern}" "${searchPath}" 2>/dev/null || grep -rn "${pattern}" --include="${file_pattern}" "${searchPath}"`
-      : `rg --no-heading -n "${pattern}" "${searchPath}" 2>/dev/null || grep -rn "${pattern}" "${searchPath}"`;
+      ? `rg --no-heading -n "${pattern}" --glob "${file_pattern}" "${resolvedSearchPath}" 2>/dev/null || grep -rn "${pattern}" --include="${file_pattern}" "${resolvedSearchPath}"`
+      : `rg --no-heading -n "${pattern}" "${resolvedSearchPath}" 2>/dev/null || grep -rn "${pattern}" "${resolvedSearchPath}"`;
 
     try {
       const result = await execa(cmd, {
@@ -460,6 +539,7 @@ export const internalTools: any = {
   search_files: searchFilesTool,
   run_shell:    runShellTool,
   fetch_api:    fetchApiTool,
+  update_plan:  UpdatePlanTool,
 
   // === DESKTOP TOOLS ===
   open_app:        openAppTool,

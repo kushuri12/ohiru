@@ -1,8 +1,8 @@
 // src/skills/skillTools.ts
-// Tools that let the AI manage skills dynamically
+// Tools that let the AI manage skills dynamically — supports multi-file, multi-language skills
 
 import { z } from "zod";
-import { SkillManager } from "./SkillManager.js";
+import { SkillManager, SkillFile } from "./SkillManager.js";
 
 /**
  * Creates the skill management tool that the AI uses to create/test/fix skills.
@@ -11,7 +11,7 @@ import { SkillManager } from "./SkillManager.js";
 export function createSkillTools(skillManager: SkillManager) {
   return {
     manage_skills: {
-      description: `Manage Hiru's learnable skills. Actions: list, create, test, fix, delete.
+      description: `Manage Hiru's learnable skills. Actions: list, create, test, fix, delete, add_file, list_files.
 
 CREATING SKILLS — QUALITY RULES:
 1. ALWAYS provide "parameters" as JSON with type, description, required for EVERY arg
@@ -22,22 +22,38 @@ CREATING SKILLS — QUALITY RULES:
 6. Always add relevant "tags" (comma-separated)
 7. TEST with REALISTIC args (real city names, real values) not empty objects
 
-Code format: ES module with default export async function that returns a string.
-Available: fetch(), Node.js built-ins (fs, path, os, child_process).
+MULTI-FILE SKILL SUPPORT:
+- Skills live in a folder (e.g. ~/.hiru/skills/buat_document/)
+- You can use ANY language: Python (.py), JavaScript (.js/.mjs), TypeScript (.ts), Shell (.sh), Batch (.bat), etc.
+- Set "main_filename" to your entry file, e.g. "main.py" or "generator.js"
+- Add extra support files via "extra_files" JSON array: [{"filename":"config.json","content":"..."},{"filename":"helpers.py","content":"..."}]
+- For Python: read args via json.loads(sys.stdin.read()) or os.environ["SKILL_ARGS"]
+- For Shell: read args via $SKILL_ARGS env variable
+- Each language has its own runtime: python for .py, node for .js, bash for .sh, etc.
+
+Code format for JS: ES module with default export async function that returns a string.
+Code format for Python: script that reads JSON from stdin, prints result to stdout.
+Code format for Shell: script that reads $SKILL_ARGS, outputs to stdout.
+Available in JS: fetch(), Node.js built-ins (fs, path, os, child_process).
 
 WORKFLOW: create → test (with real args) → fix if error → test again → use it`,
       parameters: z.object({
-        action: z.enum(["list", "create", "test", "fix", "delete"]).describe("What to do"),
-        name: z.string().optional().describe("Skill name (for create/test/fix/delete)"),
+        action: z.enum(["list", "create", "read", "test", "fix", "delete", "add_file", "list_files"]).describe("What to do. Use 'read' to view existing skill code before fixing."),
+        name: z.string().optional().describe("Skill name (for create/test/fix/delete/add_file/list_files)"),
         description: z.string().optional().describe("Skill description (for create)"),
         parameters: z.string().optional().describe('REQUIRED for create. JSON: {"city":{"type":"string","description":"Nama kota","required":true}}'),
-        code: z.string().optional().describe("ES module code with default export async function (for create/fix)"),
+        code: z.string().optional().describe("Main entry-point code (for create/fix). Can be Python, JS, Shell, etc."),
+        main_filename: z.string().optional().describe("Main entry filename, e.g. 'main.py', 'generator.js', 'run.sh'. Defaults to '<name>.mjs'"),
+        extra_files: z.string().optional().describe('JSON array of extra files: [{"filename":"config.json","content":"{...}"},{"filename":"helpers.py","content":"import..."}]'),
         test_args: z.string().optional().describe("JSON test args with REAL values, e.g. {\"city\":\"Jakarta\"} not {}"),
         tags: z.string().optional().describe("Comma-separated tags (for create), e.g. 'weather,geo,indonesia'"),
         full_description: z.string().optional().describe("Detailed markdown documentation for the skill (optional)"),
+        // For add_file action
+        filename: z.string().optional().describe("Filename to add/update (for add_file action), e.g. 'utils.py'"),
+        file_content: z.string().optional().describe("Content of the file to add/update (for add_file action)"),
       }),
       execute: async (args: any) => {
-        const { action, name, description, parameters, code, test_args, tags, full_description } = args;
+        const { action, name, description, parameters, code, main_filename, extra_files, test_args, tags, full_description, filename, file_content } = args;
 
         switch (action) {
           case "list": {
@@ -49,7 +65,9 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
               const status = s.testResult
                 ? (s.testResult.success ? "✅ tested" : "❌ failing")
                 : "⚠️ untested";
-              return `• ${s.name} — ${s.description} [${status}] (v${s.version})`;
+              const lang = s.main ? ` [${s.main}]` : " [.mjs]";
+              const fileCount = s.files ? ` (${s.files.length} files)` : "";
+              return `• ${s.name}${lang}${fileCount} — ${s.description} [${status}] (v${s.version})`;
             }).join("\n");
             return `Installed skills (${skills.length}):\n${list}`;
           }
@@ -77,14 +95,50 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
               return "Error: parameters cannot be empty. Every skill argument must be declared.";
             }
 
+            // Parse extra files
+            let parsedExtraFiles: SkillFile[] | undefined;
+            if (extra_files) {
+              try {
+                parsedExtraFiles = JSON.parse(extra_files) as SkillFile[];
+                if (!Array.isArray(parsedExtraFiles)) {
+                  return "Error: 'extra_files' must be a JSON array of {filename, content} objects.";
+                }
+                for (const ef of parsedExtraFiles) {
+                  if (!ef.filename || typeof ef.content !== "string") {
+                    return `Error: each extra_file must have "filename" and "content". Got: ${JSON.stringify(ef)}`;
+                  }
+                }
+              } catch {
+                return "Error: 'extra_files' must be valid JSON array.";
+              }
+            }
+
             const parsedTags = tags ? tags.split(",").map((t: string) => t.trim()) : [];
-            const result = await skillManager.createSkill(name, description, parsedParams, code, parsedTags, full_description);
+            const result = await skillManager.createSkill(
+              name,
+              description,
+              parsedParams,
+              code,
+              parsedTags,
+              full_description,
+              parsedExtraFiles,
+              main_filename,
+            );
 
             if (result.success) {
-              return `✅ Skill "${name}" created!\n\nNow you MUST test it: use action "test", name "${name}", test_args with REAL values (e.g. {"city":"Jakarta"} not {}).\nDo NOT skip testing.`;
+              const mainInfo = main_filename ? ` (main: ${main_filename})` : "";
+              const filesInfo = parsedExtraFiles ? ` with ${parsedExtraFiles.length + 1} files` : "";
+              return `✅ Skill "${name}" created${mainInfo}${filesInfo}!\n\nNow you MUST test it: use action "test", name "${name}", test_args with REAL values (e.g. {"city":"Jakarta"} not {}).\nDo NOT skip testing.`;
             } else {
               return `❌ Failed to create skill "${name}": ${result.error}`;
             }
+          }
+
+          case "read": {
+            if (!name) return "Error: 'read' requires a skill name.";
+            const readResult = await skillManager.readSkillFiles(name);
+            if ("error" in readResult) return `❌ ${readResult.error}`;
+            return readResult.content;
           }
 
           case "test": {
@@ -109,12 +163,43 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
 
           case "fix": {
             if (!name || !code) return "Error: 'fix' requires name and new code.";
-            const result = await skillManager.updateSkillCode(name, code);
-            if (result.success) {
-              return `✅ Skill "${name}" code updated! Now TEST it again.`;
-            } else {
-              return `❌ Failed to update "${name}": ${result.error}`;
+            const fixResult = await skillManager.updateSkillCode(name, code);
+            if (!fixResult.success) return `❌ Failed to update "${name}": ${fixResult.error}`;
+            // Auto-test after fix
+            let parsedTestArgs: any = {};
+            try { if (args.test_args) parsedTestArgs = JSON.parse(args.test_args); } catch {}
+            const autoTest = await skillManager.testSkill(name, parsedTestArgs);
+            if (autoTest.success) {
+              return `✅ Skill "${name}" fixed and auto-tested successfully!\nOutput: ${autoTest.output}`;
             }
+            return `⚠️ Skill "${name}" code updated BUT test still FAILED:\n${autoTest.output}\n\nFix the remaining errors.`;
+          }
+
+          case "add_file": {
+            if (!name) return "Error: 'add_file' requires a skill name.";
+            if (!filename || !file_content) return "Error: 'add_file' requires 'filename' and 'file_content'.";
+
+            const result = await skillManager.updateSkillFile(name, filename, file_content);
+            if (result.success) {
+              return `✅ File "${filename}" added/updated in skill "${name}".`;
+            } else {
+              return `❌ Failed to add file: ${result.error}`;
+            }
+          }
+
+          case "list_files": {
+            if (!name) return "Error: 'list_files' requires a skill name.";
+
+            const result = await skillManager.listSkillFiles(name);
+            if ("error" in result) {
+              return `❌ ${result.error}`;
+            }
+
+            const list = result.files.map(f => {
+              const sizeKB = (f.size / 1024).toFixed(1);
+              return `  📄 ${f.name} (${f.language}, ${sizeKB}KB)`;
+            }).join("\n");
+            return `Files in skill "${name}":\n${list}`;
           }
 
           case "delete": {
@@ -124,7 +209,7 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
           }
 
           default:
-            return `Unknown action: ${action}. Use: list, create, test, fix, delete.`;
+            return `Unknown action: ${action}. Use: list, create, test, fix, delete, add_file, list_files.`;
         }
       },
     },

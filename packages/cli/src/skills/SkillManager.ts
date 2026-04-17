@@ -4,6 +4,21 @@ import path from "path";
 import os from "os";
 import { z } from "zod";
 import { EventEmitter } from "events";
+import { execa } from "execa";
+
+// ─────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────
+
+/** A single file inside a multi-file skill */
+export interface SkillFile {
+  /** Filename with extension, e.g. "main.py", "config.json", "helpers.js" */
+  filename: string;
+  /** File content */
+  content: string;
+  /** Language hint (auto-detected from extension if omitted) */
+  language?: string;
+}
 
 export interface SkillMetadata {
   name: string;
@@ -16,6 +31,19 @@ export interface SkillMetadata {
   tags: string[];
   testResult?: { success: boolean; output: string; testedAt: string };
   fullDescription?: string; // Content of .md file
+
+  /**
+   * The main entry-point file inside the skill folder.
+   * If omitted, falls back to `<name>.mjs` (legacy) or the first
+   * executable file found (.mjs → .js → .py → .ts → .sh → .bat → .ps1).
+   */
+  main?: string;
+
+  /**
+   * All files that belong to this skill (excluding the auto-generated
+   * metadata .json and readme .md, which are managed by the system).
+   */
+  files?: string[];
 }
 
 export interface LoadedSkill {
@@ -23,6 +51,57 @@ export interface LoadedSkill {
   execute: (args: any) => Promise<string>;
   filePath: string;
 }
+
+// ─────────────────────────────────────────────────────────────
+// Language runtime resolution
+// ─────────────────────────────────────────────────────────────
+
+/** Maps file extension → command to run that file. `null` = dynamic import (ESM). */
+const RUNTIME_MAP: Record<string, string | null> = {
+  ".mjs": null,           // Native ES module import
+  ".js":  null,           // Native ES module import
+  ".cjs": null,           // CommonJS → dynamic import
+  ".py":  "python",       // Python 3
+  ".ts":  "npx tsx",      // TypeScript via tsx
+  ".sh":  "bash",         // Shell script
+  ".bat": "cmd /c",       // Windows batch
+  ".ps1": "powershell -ExecutionPolicy Bypass -File", // PowerShell
+  ".rb":  "ruby",         // Ruby
+  ".php": "php",          // PHP
+  ".lua": "lua",          // Lua
+  ".pl":  "perl",         // Perl
+  ".go":  "go run",       // Go (single file)
+};
+
+/** Get the runtime command for a file extension. Returns null for native JS import. */
+function getRuntimeForExt(ext: string): string | null | undefined {
+  return RUNTIME_MAP[ext.toLowerCase()];
+}
+
+/** Detect language from file extension */
+function detectLanguage(filename: string): string {
+  const ext = path.extname(filename).toLowerCase();
+  const languageMap: Record<string, string> = {
+    ".py": "python", ".js": "javascript", ".mjs": "javascript",
+    ".cjs": "javascript", ".ts": "typescript", ".sh": "shell",
+    ".bat": "batch", ".ps1": "powershell", ".rb": "ruby",
+    ".php": "php", ".lua": "lua", ".pl": "perl", ".go": "go",
+    ".json": "json", ".md": "markdown", ".yaml": "yaml",
+    ".yml": "yaml", ".toml": "toml", ".xml": "xml",
+    ".html": "html", ".css": "css", ".sql": "sql",
+    ".r": "r", ".rs": "rust", ".java": "java",
+    ".kt": "kotlin", ".swift": "swift", ".c": "c",
+    ".cpp": "cpp", ".h": "c-header", ".cs": "csharp",
+  };
+  return languageMap[ext] || ext.replace(".", "");
+}
+
+/** Priority order for auto-detecting the main entry file */
+const MAIN_FILE_PRIORITY = [".mjs", ".js", ".py", ".ts", ".sh", ".bat", ".ps1", ".rb", ".php"];
+
+// ─────────────────────────────────────────────────────────────
+// SkillManager
+// ─────────────────────────────────────────────────────────────
 
 export class SkillManager extends EventEmitter {
   private skillsDir: string;
@@ -126,20 +205,16 @@ export class SkillManager extends EventEmitter {
   }
 
   /**
-   * Load a single skill by name
+   * Load a single skill by name (supports multi-file, multi-language skills)
    */
   private async loadOne(name: string): Promise<LoadedSkill | null> {
     const skillDir = path.join(this.skillsDir, name);
     const metaPath = path.join(skillDir, `${name}.json`);
-    const codePath = path.join(skillDir, `${name}.mjs`);
     const mdPath = path.join(skillDir, `${name}.md`);
 
-    const [metaExists, codeExists] = await Promise.all([
-      fs.access(metaPath).then(() => true).catch(() => false),
-      fs.access(codePath).then(() => true).catch(() => false),
-    ]);
-
-    if (!metaExists || !codeExists) return null;
+    // metadata.json MUST exist
+    const metaExists = await fs.access(metaPath).then(() => true).catch(() => false);
+    if (!metaExists) return null;
 
     const metaRaw = await fs.readFile(metaPath, "utf8");
     const metadata: SkillMetadata = JSON.parse(metaRaw);
@@ -149,22 +224,120 @@ export class SkillManager extends EventEmitter {
       metadata.fullDescription = await fs.readFile(mdPath, "utf8");
     }
 
-    // Dynamic import the skill module
-    const fileUrl = `file:///${codePath.replace(/\\/g, "/")}`;
-    const mod = await import(/* @vite-ignore */ fileUrl);
-    const execute = mod.default || mod.execute;
-
-    if (typeof execute !== "function") {
-      throw new Error(`Skill "${name}" has no default export function`);
+    // ── Determine the main entry file ──────────────────────
+    let mainFile = metadata.main;
+    
+    if (!mainFile) {
+      // Legacy: try <name>.mjs
+      const legacyPath = path.join(skillDir, `${name}.mjs`);
+      if (await fs.access(legacyPath).then(() => true).catch(() => false)) {
+        mainFile = `${name}.mjs`;
+      } else {
+        // Auto-detect: scan directory for first executable file by priority
+        const dirFiles = await fs.readdir(skillDir);
+        for (const ext of MAIN_FILE_PRIORITY) {
+          const candidate = dirFiles.find(f => f.endsWith(ext) && !f.endsWith(".json") && !f.endsWith(".md"));
+          if (candidate) {
+            mainFile = candidate;
+            break;
+          }
+        }
+      }
     }
 
-    const skill: LoadedSkill = { metadata, execute, filePath: codePath };
+    if (!mainFile) {
+      throw new Error(`Skill "${name}" has no recognizable entry file`);
+    }
+
+    const mainPath = path.join(skillDir, mainFile);
+    const mainExt = path.extname(mainFile).toLowerCase();
+    const runtime = getRuntimeForExt(mainExt);
+
+    let execute: (args: any) => Promise<string>;
+
+    if (runtime === null) {
+      // ── Native JS/ESM import ────────────────────────
+      const fileUrl = `file:///${mainPath.replace(/\\/g, "/")}`;
+      const mod = await import(/* @vite-ignore */ fileUrl);
+      const fn = mod.default || mod.execute;
+
+      if (typeof fn !== "function") {
+        throw new Error(`Skill "${name}" main file (${mainFile}) has no default export function`);
+      }
+      execute = fn;
+    } else if (runtime === undefined) {
+      // Unknown extension — not executable, skip
+      throw new Error(`Skill "${name}" main file "${mainFile}" has unsupported extension "${mainExt}"`);
+    } else {
+      // ── External runtime (Python, Shell, etc.) ──────
+      execute = this.createExternalExecutor(name, mainPath, runtime, skillDir);
+    }
+
+    const skill: LoadedSkill = { metadata, execute, filePath: mainPath };
     this.loadedSkills.set(name, skill);
     return skill;
   }
 
   /**
-   * Create and save a new skill
+   * Create an executor function that runs a skill file via an external runtime.
+   * Arguments are passed as a JSON string via stdin and environment variable SKILL_ARGS.
+   * The script's stdout is captured as the return value.
+   */
+  private createExternalExecutor(
+    name: string,
+    mainPath: string,
+    runtime: string,
+    skillDir: string
+  ): (args: any) => Promise<string> {
+    return async (args: any): Promise<string> => {
+      const argsJson = JSON.stringify(args);
+
+      try {
+        const result = await execa(
+          `${runtime} "${mainPath}"`,
+          {
+            shell: true,
+            cwd: skillDir,
+            timeout: 30000,
+            reject: false,
+            input: argsJson,
+            env: {
+              ...process.env,
+              SKILL_ARGS: argsJson,
+              SKILL_NAME: name,
+              SKILL_DIR: skillDir,
+            },
+          }
+        );
+
+        if (result.exitCode !== 0) {
+          const stderr = (result.stderr || "").trim();
+          throw new Error(
+            `Skill "${name}" exited with code ${result.exitCode}${stderr ? `: ${stderr}` : ""}`
+          );
+        }
+
+        return (result.stdout || "").trim() || "(no output)";
+      } catch (e: any) {
+        if (e.timedOut) {
+          throw new Error(`Skill "${name}" timed out after 30s`);
+        }
+        throw e;
+      }
+    };
+  }
+
+  /**
+   * Create and save a new skill — supports multi-file, multi-language.
+   *
+   * @param name          Skill name (sanitized automatically)
+   * @param description   Short description
+   * @param parameters    Parameter definitions
+   * @param code          Main entry-point code (for single-file or legacy compat)
+   * @param tags          Tags
+   * @param fullDescription  Full markdown documentation
+   * @param extraFiles    Additional files to include (e.g. helpers, configs)
+   * @param mainFilename  Custom main filename (e.g. "main.py" instead of "<name>.mjs")
    */
   async createSkill(
     name: string,
@@ -172,11 +345,27 @@ export class SkillManager extends EventEmitter {
     parameters: SkillMetadata["parameters"],
     code: string,
     tags: string[] = [],
-    fullDescription?: string
+    fullDescription?: string,
+    extraFiles?: SkillFile[],
+    mainFilename?: string,
   ): Promise<{ success: boolean; error?: string }> {
     // Sanitize name
     const safeName = name.replace(/[^a-z0-9_]/gi, "_").toLowerCase();
     const skillDir = path.join(this.skillsDir, safeName);
+
+    // Determine the main file name
+    const resolvedMainFilename = mainFilename || `${safeName}.mjs`;
+    const mainExt = path.extname(resolvedMainFilename);
+
+    // Build the list of all files
+    const allFileNames: string[] = [resolvedMainFilename];
+    if (extraFiles) {
+      for (const ef of extraFiles) {
+        if (!allFileNames.includes(ef.filename)) {
+          allFileNames.push(ef.filename);
+        }
+      }
+    }
 
     const metadata: SkillMetadata = {
       name: safeName,
@@ -187,30 +376,41 @@ export class SkillManager extends EventEmitter {
       author: "ai",
       parameters,
       tags,
+      main: resolvedMainFilename,
+      files: allFileNames,
     };
 
     const metaPath = path.join(skillDir, `${safeName}.json`);
-    const codePath = path.join(skillDir, `${safeName}.mjs`);
+    const mainPath = path.join(skillDir, resolvedMainFilename);
     const mdPath = path.join(skillDir, `${safeName}.md`);
 
     // Create the skill directory
     await fs.mkdir(skillDir, { recursive: true });
 
-    // Wrap the code in a proper ESM module
-    const wrappedCode = `// Auto-generated Hiru skill: ${safeName}
-// ${description}
-// Created: ${metadata.createdAt}
+    // ── Wrap the main code ────────────────────────────────
+    const lang = detectLanguage(resolvedMainFilename);
+    const commentStyle = this.getCommentPrefix(lang);
+    const wrappedCode = `${commentStyle} Auto-generated Hiru skill: ${safeName}
+${commentStyle} ${description}
+${commentStyle} Created: ${metadata.createdAt}
 
 ${code}
 `;
 
-    // Create the markdown documentation
+    // ── Create the markdown documentation ─────────────────
+    const filesList = allFileNames.map(f => `- \`${f}\` (${detectLanguage(f)})`).join("\n");
     const readme = fullDescription || `# Skill: ${safeName}
 
 > ${description}
 
 ## Description
-This is a dynamic skill created for Hiru. 
+This is a dynamic multi-file skill created for Hiru. 
+
+## Files
+${filesList}
+
+## Entry Point
+\`${resolvedMainFilename}\` (${lang})
 
 ## Requirements
 - Parameters: \`${Object.keys(parameters).join(", ") || "None"}\`
@@ -224,9 +424,24 @@ Hiru can call this skill using \`skill_${safeName}\`.
 `;
 
     try {
-      await fs.writeFile(codePath, wrappedCode, "utf8");
+      // Write main code file
+      await fs.writeFile(mainPath, wrappedCode, "utf8");
+
+      // Write metadata
       await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), "utf8");
+
+      // Write markdown documentation
       await fs.writeFile(mdPath, readme, "utf8");
+
+      // Write extra files
+      if (extraFiles && extraFiles.length > 0) {
+        for (const ef of extraFiles) {
+          // Prevent path traversal
+          const safeFn = path.basename(ef.filename);
+          const efPath = path.join(skillDir, safeFn);
+          await fs.writeFile(efPath, ef.content, "utf8");
+        }
+      }
 
       // Try to load it immediately
       const skill = await this.loadOne(safeName);
@@ -282,7 +497,7 @@ Hiru can call this skill using \`skill_${safeName}\`.
   }
 
   /**
-   * Update a skill's code (for fixing errors)
+   * Update a skill's main code (for fixing errors)
    */
   async updateSkillCode(name: string, newCode: string): Promise<{ success: boolean; error?: string }> {
     const skill = this.loadedSkills.get(name);
@@ -291,7 +506,7 @@ Hiru can call this skill using \`skill_${safeName}\`.
     }
 
     const skillDir = path.join(this.skillsDir, name);
-    const codePath = path.join(skillDir, `${name}.mjs`);
+    const codePath = skill.filePath; // Points to the actual main file
     const backupPath = codePath + ".bak";
 
     try {
@@ -300,9 +515,11 @@ Hiru can call this skill using \`skill_${safeName}\`.
       await fs.writeFile(backupPath, oldCode, "utf8");
 
       // Write new code
-      const wrappedCode = `// Auto-generated Hiru skill: ${name}
-// ${skill.metadata.description}
-// Updated: ${new Date().toISOString()} (v${skill.metadata.version + 1})
+      const lang = detectLanguage(path.basename(codePath));
+      const commentStyle = this.getCommentPrefix(lang);
+      const wrappedCode = `${commentStyle} Auto-generated Hiru skill: ${name}
+${commentStyle} ${skill.metadata.description}
+${commentStyle} Updated: ${new Date().toISOString()} (v${skill.metadata.version + 1})
 
 ${newCode}
 `;
@@ -331,6 +548,92 @@ ${newCode}
       return { success: false, error: e.message };
     }
   }
+
+  /**
+   * Update or add an extra file inside a skill folder
+   */
+  async updateSkillFile(
+    skillName: string,
+    filename: string,
+    content: string
+  ): Promise<{ success: boolean; error?: string }> {
+    const skill = this.loadedSkills.get(skillName);
+    if (!skill) {
+      return { success: false, error: `Skill "${skillName}" not found` };
+    }
+
+    const skillDir = path.join(this.skillsDir, skillName);
+    const safeFn = path.basename(filename);
+    const filePath = path.join(skillDir, safeFn);
+
+    try {
+      await fs.writeFile(filePath, content, "utf8");
+
+      // Update metadata files list
+      if (!skill.metadata.files?.includes(safeFn)) {
+        skill.metadata.files = skill.metadata.files || [];
+        skill.metadata.files.push(safeFn);
+        skill.metadata.updatedAt = new Date().toISOString();
+        await this.saveMetadata(skillName, skill.metadata);
+      }
+
+      return { success: true };
+    } catch (e: any) {
+      return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * List all files inside a skill folder
+   */
+  async listSkillFiles(skillName: string): Promise<{ files: Array<{ name: string; language: string; size: number }> } | { error: string }> {
+    const skillDir = path.join(this.skillsDir, skillName);
+    
+    try {
+      const entries = await fs.readdir(skillDir);
+      const fileInfos = await Promise.all(
+        entries.map(async (f) => {
+          const stat = await fs.stat(path.join(skillDir, f));
+          return {
+            name: f,
+            language: detectLanguage(f),
+            size: stat.size,
+          };
+        })
+      );
+      return { files: fileInfos };
+    } catch (e: any) {
+      return { error: `Could not list files for skill "${skillName}": ${e.message}` };
+    }
+  }
+
+  /**
+   * Read all source files in a skill folder (for AI to inspect before fixing).
+   * Returns concatenated content of all non-metadata files.
+   */
+  async readSkillFiles(skillName: string): Promise<{ content: string } | { error: string }> {
+    const skillDir = path.join(this.skillsDir, skillName);
+    
+    try {
+      const entries = await fs.readdir(skillDir);
+      const sections: string[] = [`## Skill: ${skillName}\n`];
+      
+      for (const filename of entries) {
+        const filePath = path.join(skillDir, filename);
+        const stat = await fs.stat(filePath);
+        if (stat.isDirectory()) continue;
+        
+        const content = await fs.readFile(filePath, "utf8");
+        const lang = detectLanguage(filename);
+        sections.push(`### ${filename} (${lang})\n\`\`\`${lang}\n${content}\n\`\`\``);
+      }
+      
+      return { content: sections.join("\n\n") };
+    } catch (e: any) {
+      return { error: `Could not read skill "${skillName}": ${e.message}` };
+    }
+  }
+
 
   /**
    * Delete a skill
@@ -372,8 +675,12 @@ ${newCode}
         zodShape[paramName] = zodType;
       }
 
+      const langInfo = skill.metadata.main
+        ? ` [${detectLanguage(skill.metadata.main)}]`
+        : "";
+
       tools[`skill_${name}`] = {
-        description: `[SKILL] ${skill.metadata.description}`,
+        description: `[SKILL]${langInfo} ${skill.metadata.description}`,
         parameters: z.object(zodShape),
         execute: skill.execute,
       };
@@ -385,5 +692,35 @@ ${newCode}
   private async saveMetadata(name: string, metadata: SkillMetadata): Promise<void> {
     const metaPath = path.join(this.skillsDir, name, `${name}.json`);
     await fs.writeFile(metaPath, JSON.stringify(metadata, null, 2), "utf8");
+  }
+
+  /** Get the single-line comment prefix for a language */
+  private getCommentPrefix(lang: string): string {
+    const map: Record<string, string> = {
+      python: "#",
+      ruby: "#",
+      perl: "#",
+      shell: "#",
+      powershell: "#",
+      yaml: "#",
+      r: "#",
+      lua: "--",
+      sql: "--",
+      batch: "REM",
+      html: "<!--",
+      css: "/*",
+      c: "//",
+      cpp: "//",
+      csharp: "//",
+      java: "//",
+      kotlin: "//",
+      swift: "//",
+      go: "//",
+      rust: "//",
+      javascript: "//",
+      typescript: "//",
+      php: "//",
+    };
+    return map[lang] || "//";
   }
 }

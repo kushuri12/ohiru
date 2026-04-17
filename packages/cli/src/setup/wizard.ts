@@ -3,7 +3,8 @@ import chalk from "chalk";
 import { PROVIDERS, getProvider } from "../providers/index.js";
 import { saveConfig } from "../utils/config.js";
 import { HiruConfig } from "shared";
-import { theme } from "../ui/theme.js";
+
+const theme = { accent: "#CC785C" };
 
 function formatModelHint(m: any): string {
   const price = m.inputPricePerM === 0 ? "FREE" : `$${m.inputPricePerM}/M in`;
@@ -64,7 +65,9 @@ export async function runSetupWizard(): Promise<HiruConfig> {
      const baseUrlRes = await p.text({
        message: `Base URL for ${provider.label}:`,
        placeholder: provider.id === 'ollama' ? 'http://localhost:11434/api' : 'https://api.openai.com/v1',
-       initialValue: existingConfig?.baseUrl,
+       initialValue: (existingConfig?.provider === providerGroup.providerId && existingConfig?.baseUrl) 
+                      ? existingConfig?.baseUrl 
+                      : undefined,
      });
      if (p.isCancel(baseUrlRes)) { p.cancel("Setup cancelled."); process.exit(0); }
      configParams.baseUrl = baseUrlRes;

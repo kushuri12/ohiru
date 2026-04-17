@@ -3,8 +3,10 @@ import { Bot, InputFile } from "grammy";
 import { HiruAgent } from "../agent/Agent.js";
 import { ProjectContext } from "shared";
 import { TelegramFormatter, TOOL_EMOJI } from "./TelegramFormatter.js";
-import { getFilePath, ensureHiruDirs, HIRU_DIR } from "../utils/paths.js";
+import { getReceivedPath, ensureHiruDirs, HIRU_DIR, resolveSafePath, isSafePath, HIRU_EXPORTS_DIR } from "../utils/paths.js";
 import fetch from "node-fetch";
+import fs from "node:fs/promises";
+import pathMod from "node:path";
 
 export interface TelegramBridgeConfig {
   botToken: string;
@@ -31,6 +33,9 @@ export class TelegramBridge {
   private telegramHistory: any[] = [];
   private lastFlushedText = "";
   private lastSealTime = 0;
+  private lastTokenBatch = "";           // Track last batch of tokens to detect repetition
+  private tokenRepeatCount = 0;          // Count consecutive repeated token batches
+  private sentResponseTexts = new Set<string>(); // Track sent responses to prevent duplicates
 
   // Queue: collect files to send AFTER runStreaming completes (avoids race conditions)
   private pendingScreenshots: string[] = [];
@@ -66,6 +71,9 @@ export class TelegramBridge {
     this.currentResponseMsgId = null;
     this.lastFlushedText = "";
     this.lastFlushTime = 0;
+    this.lastTokenBatch = "";
+    this.tokenRepeatCount = 0;
+    this.sentResponseTexts.clear();
   }
 
   private async registerTelegramTools() {
@@ -92,31 +100,31 @@ export class TelegramBridge {
       };
     }
 
-    internalTools.save_to_public = {
-      description: `Save a file to Hiru's permanent public folder (~/.hiru/public).
+    (this.agent as any).tools.save_to_exports = {
+      description: `Save a file to Hiru's permanent exports folder (~/.hiru/exports).
 Use this for files the user wants to keep globally or access via Telegram sharing.`,
       parameters: z.object({
-        path: z.string().describe("Source file path to save to public folder"),
-        filename: z.string().optional().describe("Optional new filename in public folder"),
+        path: z.string().describe("Source file path to save to exports folder"),
+        filename: z.string().optional().describe("Optional new filename in exports folder"),
       }),
       execute: async (args: any) => {
         const { path: srcPath, filename } = args;
-        const fs = await import("node:fs/promises");
-        const pathMod = await import("path");
+        const resolvedSrc = resolveSafePath(srcPath);
         
-        const publicDir = pathMod.join(HIRU_DIR, "public");
-        await fs.mkdir(publicDir, { recursive: true });
-        
-        const resolvedSrc = pathMod.resolve(srcPath);
+        // Security check
+        if (!isSafePath(resolvedSrc)) {
+          return `❌ Permission denied for path: ${srcPath}. You can only save files from within the project directory or ~/.hiru/`;
+        }
+
         const baseName = filename || pathMod.basename(resolvedSrc);
-        const destPath = pathMod.join(publicDir, baseName);
+        const destPath = pathMod.join(HIRU_EXPORTS_DIR, baseName);
         
         await fs.copyFile(resolvedSrc, destPath);
-        return `✅ File saved to public folder: ${destPath}`;
+        return `✅ File exported to exports folder: ${destPath}`;
       },
     };
 
-    internalTools.send_to_chat = {
+    (this.agent as any).tools.send_to_chat = {
       description: `Send a file to the user's Telegram chat.
 Use this AFTER creating/writing a file to deliver it to the user.
 Works for: documents (.txt, .pdf, .docx), images (.png, .jpg), code files, etc.
@@ -199,6 +207,95 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       this.telegramHistory = [];
       await ctx.reply("🧹 Telegram history cleared. Context is now fresh.");
     });
+
+    this.bot.command("plugin", async (ctx) => {
+      const match = ctx.match || "";
+      const args = match.split(" ").filter(Boolean);
+      const action = args[0];
+      const source = args.slice(1).join(" ");
+
+      if (!action) {
+        await ctx.reply("Usage: /plugin <install|uninstall|update|enable|disable|list> [source]");
+        return;
+      }
+
+      if (action === "install" && source) {
+        await ctx.reply(`📦 Installing plugin from ${source}...`);
+        try {
+          const result = await this.agent.pluginManager.install(source);
+          await ctx.reply(result.success ? `✅ Plugin "${result.name}" installed successfully!` : `❌ Failed to install: ${result.error}`);
+        } catch (e: any) {
+          await ctx.reply(`❌ Error: ${e.message}`);
+        }
+      } else if (action === "uninstall" && source) {
+        const result = await this.agent.pluginManager.uninstall(source);
+        await ctx.reply(result.success ? `🗑️ Plugin "${source}" uninstalled.` : `❌ ${result.error}`);
+      } else if (action === "update" && source) {
+        await ctx.reply(`🔄 Updating ${source}...`);
+        const result = await this.agent.pluginManager.update(source);
+        await ctx.reply(result.success ? `✅ Plugin "${source}" updated!` : `❌ ${result.error}`);
+      } else if (action === "enable" && source) {
+        const ok = await this.agent.pluginManager.enable(source);
+        await ctx.reply(ok ? `✅ Plugin "${source}" enabled.` : `❌ Plugin "${source}" not found.`);
+      } else if (action === "disable" && source) {
+        const ok = await this.agent.pluginManager.disable(source);
+        await ctx.reply(ok ? `⏸️ Plugin "${source}" disabled.` : `❌ Plugin "${source}" not found.`);
+      } else if (action === "list") {
+        const plugins = this.agent.pluginManager.listPlugins();
+        if (plugins.length === 0) {
+          await ctx.reply("No plugins installed. Use /plugin install <github-url>");
+        } else {
+          const list = plugins.map(p => {
+            const emoji = p.status === "active" ? "✅" : p.status === "disabled" ? "⏸️" : "❌";
+            return `${emoji} ${p.name} v${p.version} [${p.format}]`;
+          }).join("\n");
+          await ctx.reply(`📦 Installed Plugins (${plugins.length}):\n${list}`);
+        }
+      } else {
+        await ctx.reply(`Unknown action: ${action}`);
+      }
+    });
+
+    this.bot.command("skill", async (ctx) => {
+      const match = ctx.match || "";
+      const args = match.split(" ").filter(Boolean);
+      const action = args[0];
+
+      if (!action) {
+        await ctx.reply("Usage: /skill <list|create|delete|test> [args]");
+        return;
+      }
+
+      if (action === "list") {
+        const skills = this.agent.skillManager.listSkills();
+        if (skills.length === 0) {
+          await ctx.reply("No skills installed.");
+        } else {
+          const list = skills.map(s => {
+            const status = s.testResult ? (s.testResult.success ? "✅" : "❌") : "⚠️";
+            return `${status} ${s.name} (v${s.version})`;
+          }).join("\n");
+          await ctx.reply(`🎯 Installed Skills (${skills.length}):\n${list}`);
+        }
+      } else if (action === "delete" && args[1]) {
+        await this.agent.skillManager.deleteSkill(args[1]);
+        await ctx.reply(`🗑️ Skill "${args[1]}" deleted.`);
+      } else if (action === "create" && args[1]) {
+        await ctx.reply(`📂 Skill directory: ${this.agent.skillManager.dir}\nCreate a folder "${args[1]}" there.`);
+      } else if (action === "test" && args[1]) {
+        let testArgs = {};
+        if (args[2]) {
+          try { testArgs = JSON.parse(args.slice(2).join(" ")); } catch { 
+            await ctx.reply("❌ Test args must be valid JSON");
+            return;
+          }
+        }
+        const result = await this.agent.skillManager.testSkill(args[1], testArgs);
+        await ctx.reply(result.success ? `✅ Skill "${args[1]}" passed!\nOutput: ${result.output}` : `❌ Skill "${args[1]}" failed: ${result.output}`);
+      } else {
+        await ctx.reply(`Unknown action: ${action}`);
+      }
+    });
   }
 
   private setupMessageHandler() {
@@ -240,11 +337,17 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       this.currentStatusMsgId = ack.message_id;
 
       try {
-        await this.agent.runStreaming(ctx.message.text, this.ctx, this.telegramHistory);
+        await this.agent.runStreaming(ctx.message.text, this.ctx);
         this.telegramHistory = [...this.agent.messages];
 
+        // Don't flush here — let sealResponse (from onDone) handle the final flush.
+        // This prevents double-flush which causes duplicate messages.
         if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null; }
-        await this.flushResponse();
+        
+        // Only flush if onDone hasn't already handled it
+        if (this.responseBuffer.trim() && !this.doneHandled) {
+          await this.flushResponse();
+        }
 
         const sentPaths = new Set<string>();
         for (const ssPath of this.pendingScreenshots) {
@@ -328,7 +431,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
           try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, `⏳ *Downloading:* \`${originalName}\`...`, { parse_mode: "Markdown" }); } catch {}
         }
 
-        const destPath = getFilePath(originalName);
+        const destPath = getReceivedPath(originalName);
         const url = `https://api.telegram.org/file/bot${this.config.botToken}/${file.file_path}`;
 
         const response = await fetch(url);
@@ -369,7 +472,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
           agentInput = agentPrompt;
         }
         
-        await this.agent.runStreaming(agentInput, this.ctx, this.telegramHistory);
+        await this.agent.runStreaming(agentInput, this.ctx);
         this.telegramHistory = [...this.agent.messages];
         await this.flushResponse();
 
@@ -439,7 +542,15 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     try {
       const text = this.responseBuffer.trim();
       const formatted = this.formatter.formatResponse(text);
+      
+      // Dedup guard: don't send if we've already sent this exact response
+      if (this.sentResponseTexts.has(text) && !this.currentResponseMsgId) {
+        this.isFlushing = false;
+        return;
+      }
+      
       if (formatted.length > 4000) {
+        this.sentResponseTexts.add(text);
         this.responseBuffer = "";
         this.currentResponseMsgId = null;
         this.isFlushing = false;
@@ -452,6 +563,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         const msg = await this.bot.api.sendMessage(this.currentChatId, formatted, { parse_mode: "Markdown" });
         this.currentResponseMsgId = msg.message_id;
       }
+      this.sentResponseTexts.add(text);
       this.lastFlushedText = text;
       this.lastFlushTime = Date.now();
     } catch (e: any) {
@@ -474,6 +586,29 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     });
 
     this.agent.on("token", (t: string) => {
+      // Dedup guard: detect if the model is repeating itself
+      // Check if this token batch is a repeat of what we've already buffered
+      if (t.length > 20) {
+        // For substantial token chunks, check if the buffer already ends with this text
+        if (this.responseBuffer.endsWith(t)) {
+          this.tokenRepeatCount++;
+          if (this.tokenRepeatCount > 2) {
+            // Model is looping — stop accumulating
+            return;
+          }
+        } else {
+          this.tokenRepeatCount = 0;
+        }
+        
+        // Check if the entire token is a repetition of existing buffer content
+        const bufferTrimmed = this.responseBuffer.trim();
+        const tokenTrimmed = t.trim();
+        if (bufferTrimmed.length > 50 && tokenTrimmed.length > 50 && bufferTrimmed.includes(tokenTrimmed)) {
+          // Token content already exists in buffer — skip
+          return;
+        }
+      }
+      
       this.responseBuffer += t;
       if (this.flushTimer) clearTimeout(this.flushTimer);
       this.flushTimer = setTimeout(() => this.flushResponse(), 400);
@@ -557,8 +692,13 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     this.agent.on("error", async (e: Error) => {
       await this.sendText(`❌ *Error:* ${e.message}`);
     });
+    this.agent.on("agentError", async (e: Error) => {
+      await this.sendText(`❌ *Error:* ${e.message}`);
+    });
 
     this.agent.on("done", async () => {
+      if (this.doneHandled) return; // Prevent double handling
+      this.doneHandled = true;
       // Guard: jangan seal kalau buffer kosong (hindari double-seal)
       if (!this.responseBuffer.trim() && !this.currentResponseMsgId) return;
       await this.sealResponse();
@@ -613,7 +753,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     if (!this.currentChatId) throw new Error("No active Telegram chat");
     const pathMod = await import("path");
     const { readFile } = await import("node:fs/promises");
-    const resolved = pathMod.default.resolve(filePath);
+    const resolved = resolveSafePath(filePath);
     const buffer = await readFile(resolved);
     const filename = pathMod.default.basename(resolved);
     const ext = pathMod.default.extname(resolved).toLowerCase();

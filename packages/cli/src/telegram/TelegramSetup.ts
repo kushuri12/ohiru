@@ -9,30 +9,30 @@ export async function runTelegramSetup(config: any): Promise<any> {
   intro(chalk.bgCyan(chalk.black(" Setup Telegram Bot ")));
 
   console.log(chalk.gray(`
-  Cara setup:
-  1. Buka Telegram → cari @BotFather
-  2. Kirim /newbot → ikuti petunjuk → copy token
-  3. Kirim pesan ke bot kamu (apapun)
-  4. Buka: https://api.telegram.org/bot<TOKEN>/getUpdates
-  5. Catat angka dari "chat":{"id": ANGKA_INI}
+  Instructions:
+  1. Open Telegram → search for @BotFather
+  2. Send /newbot → follow instructions → copy token
+  3. Send any message to your newly created bot
+  4. Visit: https://api.telegram.org/bot<TOKEN>/getUpdates
+  5. Copy the number from "chat":{"id": THIS_NUMBER}
   `));
 
   const botToken = await password({
-    message: "Bot Token dari @BotFather:",
-    validate: (v: string) => (!v || !v.includes(":")) ? "Format token tidak valid" : undefined,
+    message: "Bot Token from @BotFather:",
+    validate: (v: string) => (!v || !v.includes(":")) ? "Invalid token format" : undefined,
   });
-  if (isCancel(botToken)) { cancel("Setup dibatalkan."); process.exit(0); }
+  if (isCancel(botToken)) { cancel("Setup aborted."); process.exit(0); }
 
   const chatId = await text({
-    message: "Chat ID kamu (angka dari getUpdates):",
+    message: "Your Chat ID (number from getUpdates):",
     placeholder: "1234567890",
-    validate: (v: string) => (!v || isNaN(Number(v))) ? "Harus berupa angka" : undefined,
+    validate: (v: string) => (!v || isNaN(Number(v))) ? "Must be a number" : undefined,
   });
-  if (isCancel(chatId)) { cancel("Setup dibatalkan."); process.exit(0); }
+  if (isCancel(chatId)) { cancel("Setup aborted."); process.exit(0); }
 
-  // Test koneksi
+  // Connection Test
   const s = spinner();
-  s.start("Test koneksi...");
+  s.start("Testing connection...");
   try {
     const res = await fetch(
       `https://api.telegram.org/bot${botToken}/sendMessage`,
@@ -41,15 +41,15 @@ export async function runTelegramSetup(config: any): Promise<any> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: "✅ *Hiru terhubung!*\nKirim perintah apa saja.",
+          text: "✅ *Hiru is connected!*\nSend me a command and I will assist you.",
           parse_mode: "Markdown",
         }),
       }
     );
     if (!res.ok) throw new Error(await res.text());
-    s.stop("Berhasil ✓");
+    s.stop("Success ✓");
   } catch (e: any) {
-    s.stop(chalk.red("Gagal: " + e.message));
+    s.stop(chalk.red("Failed: " + e.message));
     process.exit(1);
   }
 
@@ -62,6 +62,6 @@ export async function runTelegramSetup(config: any): Promise<any> {
   const { saveConfig } = await import("../utils/config.js");
   await saveConfig(updated);
 
-  outro(chalk.green("Setup selesai! Jalankan: ") + chalk.cyan("hiru tele"));
+  outro(chalk.green("Setup complete! You can now run: ") + chalk.cyan("hiru"));
   return updated;
 }

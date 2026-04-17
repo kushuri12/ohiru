@@ -14,14 +14,18 @@ You can:
 
 You MUST use this anytime the user shares personal details, preferences, or important global rules they want you to remember across all projects forever.`,
             parameters: z.object({
-                action: z.enum(["add_fact", "remove_fact", "set_pref", "remove_pref", "list"]),
+                action: z.enum(["add_fact", "remove_fact", "set_pref", "remove_pref", "list", "set_identity"]),
                 fact: z.string().optional().describe("Fact text to store (for add_fact)"),
                 index: z.number().optional().describe("Index of fact to remove (for remove_fact)"),
                 key: z.string().optional().describe("Preference key (for set/remove_pref)"),
-                value: z.string().optional().describe("Preference value (for set_pref)")
+                value: z.string().optional().describe("Preference value (for set_pref / set_identity)")
             }),
             execute: async (args: { action: string, fact?: string, index?: number, key?: string, value?: string }) => {
                 switch(args.action) {
+                    case "set_identity":
+                        if (!args.value) return "Error: 'value' (identity text) required";
+                        await memory.setIdentity(args.value);
+                        return `✨ Identity updated. Hiru now knows who they are.`;
                     case "add_fact":
                         if (!args.fact) return "Error: 'fact' text required";
                         await memory.addFact(args.fact);

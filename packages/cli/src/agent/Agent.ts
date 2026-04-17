@@ -1,12 +1,12 @@
 import { Message } from "../types.js";
-import { createProviderInstance } from "../providers/index.js";
+import { createProviderInstance, checkOllamaConnection } from "../providers/index.js";
 import { v4 as uuidv4 } from "uuid";
 import { HiruConfig, ProjectContext } from "shared";
-import { buildSystemPrompt } from "./ContextBuilder.js";
 import { internalTools, setFileProgressCallback, toolEvents } from "../tools/index.js";
 import { streamText, stepCountIs, ToolCallPart, ToolResultPart, generateText } from "ai";
 import { EventEmitter } from "events";
 import path from "path";
+import fs from "fs";
 import { MemoryGuard } from "../memory/guard/MemoryGuard.js";
 import { CheckpointManager } from "../memory/guard/CheckpointManager.js";
 import { LoopDetector } from "../memory/guard/LoopDetector.js";
@@ -20,17 +20,35 @@ import {
 } from "../thinking/index.js";
 import { StreamingTagFilter, TagStripper } from "../thinking/TagStripper.js";
 import { SectionParser, ParsedSection } from "../thinking/SectionParser.js";
-import { PLANNING_SYSTEM_PROMPT, EXECUTION_SYSTEM_PROMPT, CHAT_SYSTEM_PROMPT } from "./prompts.js";
+import { 
+  PLANNING_SYSTEM_PROMPT, 
+  EXECUTION_SYSTEM_PROMPT, 
+  CHAT_SYSTEM_PROMPT 
+} from "./prompts.js";
+import { buildSystemPrompt, buildSystemPromptParts, PromptPart, ContextBuilderOptions } from "./ContextBuilder.js";
 import { TodoTracker, TodoItem } from "./TodoTracker.js";
 import { SkillManager, createSkillTools } from "../skills/index.js";
 import { GlobalMemory, createMemoryTools } from "../memory/index.js";
 import { FileProgressEvent, globalFileProgress } from "../tools/FileProgress.js";
 import { createAgentTool } from "../tools/AgentTool.js";
 import { Compactor } from "./Compactor.js";
+import { StepVerifier } from "./StepVerifier.js";
 import { ProjectSnapshot } from "./Snapshot.js";
+import { NoOpHandler } from "./NoOpHandler.js";
+import { PlanEnforcer } from "./PlanEnforcer.js";
+import { PluginManager, createPluginTools } from "../plugins/index.js";
+import {
+  classifyTask,
+  selectTools,
+  applyTieredCompression,
+  trimToolDescriptions,
+  MINIMAL_SYSTEM_PROMPT,
+  TaskCategory,
+} from "./SmartContext.js";
 
 export class HiruAgent extends EventEmitter {
   private model: any;
+  private currentTaskCategory: TaskCategory = "full"; // Tracks current task for smart tool selection
   private config: HiruConfig;
   public messages: any[] = [];
   private maxIterations = 50;
@@ -49,12 +67,13 @@ export class HiruAgent extends EventEmitter {
   private currentStepIndex = 0;
   private trackedSteps: any[] = []
 
-  private noOpCount = 0;
-  private static readonly MAX_NO_OP = 2;
+  private noOpHandler: NoOpHandler;
+  private planEnforcer: PlanEnforcer;
 
   private thinkingController: ThinkingController;
   private todoTracker: TodoTracker;
-  private skillManager: SkillManager;
+  public skillManager: SkillManager;
+  public pluginManager: PluginManager;
   private globalMemory: GlobalMemory;
   private skillsReady = false;
 
@@ -69,9 +88,16 @@ export class HiruAgent extends EventEmitter {
   private readonly THINKING_EMIT_INTERVAL = 150;
   private activeToolCalls = new Map<string, { name: string; args: any }>();
   private ctx!: ProjectContext; 
+  private readyPromise: Promise<void>;
+  private tools: Record<string, any> = {}; 
+
+  public async waitReady() {
+    return this.readyPromise;
+  }
 
   constructor(config: HiruConfig, sessionId?: string) {
     super();
+    this.on("error", () => {}); // fallback — prevent uncaught EventEmitter crash
     this.config = config;
     this.model = createProviderInstance(config);
     this.sandbox = new ToolSandbox();
@@ -79,51 +105,88 @@ export class HiruAgent extends EventEmitter {
     this.checkpointManager = new CheckpointManager(sessionId);
     this.todoTracker = new TodoTracker();
     this.skillManager = new SkillManager();
+    this.pluginManager = new PluginManager();
     this.globalMemory = new GlobalMemory();
     this.compactor = new Compactor(this.model);
+    this.noOpHandler = new NoOpHandler();
+    this.planEnforcer = new PlanEnforcer();
 
-    // Init async stuff (non-blocking)
-    Promise.all([
-      this.skillManager.init(),
-      this.globalMemory.init()
-    ]).then(() => {
-      this.skillsReady = true;
-      const skills = this.skillManager.listSkills();
-      if (skills.length > 0) {
-        console.log(chalk.cyan(`  🧠 ${skills.length} skill(s) loaded: ${skills.map(s => s.name).join(", ")}`));
+    // Init async stuff
+    this.readyPromise = (async () => {
+      try {
+        await Promise.all([
+          this.skillManager.init(),
+          this.pluginManager.init(),
+          this.globalMemory.init()
+        ]);
+        
+        this.skillsReady = true;
+        
+        // 0. Initialize local tools with internal tools
+        this.tools = { ...internalTools };
+
+        // 1. Register memory tool
+        const memoryTools = createMemoryTools(this.globalMemory);
+        Object.assign(this.tools, memoryTools);
+
+        // 2. Register skill management tool + learned skill tools
+        const skillTools = createSkillTools(this.skillManager);
+        Object.assign(this.tools, skillTools);
+        Object.assign(this.tools, this.skillManager.getToolDefinitions());
+
+        // 3. Register plugin management tool + plugin-provided tools
+        const pluginTools = createPluginTools(this.pluginManager);
+        Object.assign(this.tools, pluginTools);
+        Object.assign(this.tools, this.pluginManager.getToolDefinitions());
+
+        // 4. RECURSIVE AGENT TOOL (Premium Design)
+        const hiruSubagentTool = createAgentTool(
+          (cfg) => new HiruAgent(cfg, "sub-session"), 
+          this.config, 
+          () => this.ctx // Return the current context at call-time
+        );
+        this.tools["hiru"] = hiruSubagentTool;
+
+        // Re-register when skills change
+        this.skillManager.on("skillCreated", () => {
+          Object.assign(this.tools, this.skillManager.getToolDefinitions());
+        });
+        this.skillManager.on("skillUpdated", () => {
+          Object.assign(this.tools, this.skillManager.getToolDefinitions());
+        });
+        this.skillManager.on("skillDeleted", (name: string) => {
+          delete this.tools[`skill_${name}`];
+        });
+
+        // Re-register when plugins change (hot-reload)
+        this.pluginManager.on("pluginInstalled", () => {
+          Object.assign(this.tools, this.pluginManager.getToolDefinitions());
+        });
+        this.pluginManager.on("pluginUninstalled", () => {
+          // Rebuild tools — remove stale plugin tools
+          const currentPluginTools = this.pluginManager.getToolDefinitions();
+          for (const key of Object.keys(this.tools)) {
+            if (key.startsWith("plugin_") && !currentPluginTools[key]) {
+              delete this.tools[key];
+            }
+          }
+        });
+        this.pluginManager.on("pluginEnabled", () => {
+          Object.assign(this.tools, this.pluginManager.getToolDefinitions());
+        });
+        this.pluginManager.on("pluginDisabled", () => {
+          const currentPluginTools = this.pluginManager.getToolDefinitions();
+          for (const key of Object.keys(this.tools)) {
+            if (key.startsWith("plugin_") && !currentPluginTools[key]) {
+              delete this.tools[key];
+            }
+          }
+        });
+      } catch (e: any) {
+        console.error(chalk.yellow(`  ⚠️  Systems init failed: ${e.message}`));
       }
-      
-      // Register memory tool
-      const memoryTools = createMemoryTools(this.globalMemory);
-      Object.assign(internalTools, memoryTools);
+    })();
 
-      // Register skill management tool + learned skill tools into internalTools
-      const skillTools = createSkillTools(this.skillManager);
-      Object.assign(internalTools, skillTools);
-      Object.assign(internalTools, this.skillManager.getToolDefinitions());
-
-      // RECURSIVE AGENT TOOL (Premium Design)
-      const hiruSubagentTool = createAgentTool(
-        (cfg) => new HiruAgent(cfg, "sub-session"), 
-        this.config, 
-        () => this.ctx // Return the current context at call-time
-      );
-      internalTools["hiru"] = hiruSubagentTool;
-
-      // Re-register when skills change
-      this.skillManager.on("skillCreated", () => {
-        Object.assign(internalTools, this.skillManager.getToolDefinitions());
-      });
-      this.skillManager.on("skillUpdated", () => {
-        Object.assign(internalTools, this.skillManager.getToolDefinitions());
-      });
-      this.skillManager.on("skillDeleted", (name: string) => {
-        delete internalTools[`skill_${name}`];
-      });
-    }).catch(e => {
-      console.error(chalk.yellow(`  ⚠️ Skills init failed: ${e.message}`));
-    });
-    
     // Setup Thinking Controller
     this.thinkingController = new ThinkingController({
       mode: (config.thinkingMode as ThinkingMode) || "compact",
@@ -132,15 +195,17 @@ export class HiruAgent extends EventEmitter {
       showRawThinking: config.thinkingMode === "verbose",
     });
 
-    // Forward thinking events — setup ONCE to avoid double listeners
-    this.thinkingController.on("thinkingBlock", () => {
-      this.emit("thinkingBlock", this.thinkingController.getDisplayState());
-    });
-    this.thinkingController.on("planReady", (plan) => this.emit("planReady", plan));
-    this.thinkingController.on("toolCallDuringThinking", (info) => this.emit("toolCallDuringThinking", info));
+    // Forward thinking events
+    this.attachThinkingListeners();
 
     // Setup Memory Guard
-    this.memoryGuard = new MemoryGuard();
+    const limit = config.maxMemoryMB || 4096;
+    this.memoryGuard = new MemoryGuard({
+      warnMB: Math.floor(limit * 0.7),
+      gcMB: Math.floor(limit * 0.8),
+      emergencyMB: Math.floor(limit * 0.9),
+      criticalMB: Math.floor(limit * 0.95)
+    });
     this.memoryGuard.on("warn", (s) => this.emit("memory_warn", s));
     this.memoryGuard.on("pressure", (s) => this.emit("memory_pressure", s));
     this.memoryGuard.on("emergency", (s) => this.emit("memory_emergency", s));
@@ -149,21 +214,24 @@ export class HiruAgent extends EventEmitter {
       if (this.currentAbortController) {
         this.currentAbortController.abort();
       }
-      this.emit("error", new Error("Critical memory limit reached. Execution aborted to prevent crash."));
+      this.emit("agentError", new Error("Critical memory limit reached. Execution aborted to prevent crash."));
     });
     this.memoryGuard.start();
 
-    // Setup File Progress Listener with reference for cleanup (Fix 1A)
+    // Setup File Progress Listener
     this.boundFileProgressHandler = (event: FileProgressEvent) => {
       this.emit("fileProgress", event);
     };
     globalFileProgress.on("fileProgress", this.boundFileProgressHandler);
 
-    // Stream shell output (Fix: Live terminal logs)
-    toolEvents.on("shell-output", (data: { text: string }) => {
+    // Setup Shell Output Listener
+    this.boundShellOutputHandler = (data: { text: string }) => {
       this.emit("toolOutput", data);
-    });
+    };
+    toolEvents.on("shell-output", this.boundShellOutputHandler);
   }
+
+  private boundShellOutputHandler: ((data: { text: string }) => void) | null = null;
 
   /**
    * Abort the current request/run (planning or execution)
@@ -202,8 +270,8 @@ export class HiruAgent extends EventEmitter {
   getTools(options: { isReadonly?: boolean } = {}) {
     const wrappedTools: any = {};
     
-    // 1. Core Internal Tools
-    for (const [name, tool] of Object.entries(internalTools)) {
+    // 1. Core Internal & Instance Tools
+    for (const [name, tool] of Object.entries(this.tools)) {
       const t = tool as any;
       
       // Filter out write tools if read-only is requested (for planning phase)
@@ -246,16 +314,67 @@ export class HiruAgent extends EventEmitter {
       };
     }
 
-    // 2. Dynamic Learned Skills
-    if (this.skillManager) {
-      const skillTools = this.skillManager.getToolDefinitions();
-      for (const [name, tool] of Object.entries(skillTools)) {
-        // Skill tools are essential context gatherers, but we'll monitor them
-        wrappedTools[name] = tool; 
-      }
+    return wrappedTools;
+  }
+
+  /**
+   * Smart tool selector — only returns tools relevant to the current task.
+   * This is the #1 token saver: cuts tool definitions from ~5000+ to ~500-1500 tokens.
+   */
+  private getSmartTools(options: { isReadonly?: boolean } = {}): Record<string, any> {
+    const allTools = this.getTools(options);
+    // Select only relevant tools based on current task category
+    const selected = selectTools(allTools, this.currentTaskCategory);
+    // Trim tool descriptions to max 80 chars for additional savings
+    return trimToolDescriptions(selected);
+  }
+
+  /**
+   * Helper to get system prompt with cache control hints
+   */
+  private getSystemPrompt(ctx: ProjectContext, wrapper?: (p: string) => string): any {
+    // Modular Soul Injection (OpenClaw style)
+    const modularSoul: any = {};
+    try {
+       const soulPath = path.join(ctx.root, "SOUL.md");
+       const idPath = path.join(ctx.root, "IDENTITY.md");
+       const userPath = path.join(ctx.root, "USER.md");
+       
+       if (fs.existsSync(soulPath)) modularSoul.soul = fs.readFileSync(soulPath, "utf-8");
+       if (fs.existsSync(idPath)) modularSoul.identity = fs.readFileSync(idPath, "utf-8");
+       if (fs.existsSync(userPath)) modularSoul.user = fs.readFileSync(userPath, "utf-8");
+    } catch (e) {
+       // Ignore FS errors in prompt builder
     }
 
-    return wrappedTools;
+    // Smart conditional injection — only include sections when relevant
+    const contextOptions: ContextBuilderOptions = {
+      hasDesktopTools: !!(this.tools["take_screenshot"] || this.tools["move_mouse"] || this.tools["inspect_ui"]),
+      isTelegram: !!(this.config as any).telegramMode,
+    };
+
+    const parts = buildSystemPromptParts(ctx, this.globalMemory, this.skillManager, this.activeSnapshot, modularSoul, this.pluginManager, contextOptions);
+    
+    // If we have a wrapper (like PLANNING_SYSTEM_PROMPT), we must apply it.
+    // However, some providers prefer arrays for caching.
+    const isAnthropic = this.config.provider === "anthropic";
+    const isGoogle = this.config.provider === "google";
+
+    if (isAnthropic || isGoogle) {
+      // Return parts for explicit caching
+      return parts.map((p, idx) => {
+        let text = p.text;
+        // If it's the core instruction (idx 0), apply the wrapper rules
+        if (idx === 0 && wrapper) {
+            text = wrapper(text);
+        }
+        return { type: "text", text, cacheControl: p.cacheControl };
+      });
+    }
+
+    // Default to string for others
+    const fullPrompt = parts.map(p => p.text).join("\n");
+    return wrapper ? wrapper(fullPrompt) : fullPrompt;
   }
 
   updateConfig(config: HiruConfig) {
@@ -269,7 +388,16 @@ export class HiruAgent extends EventEmitter {
   }
 
   private adaptMessages(messages: any[]): any[] {
-    const hash = `${messages.length}_${messages[messages.length - 1]?.id || "empty"}`;
+    // Build a robust hash that captures message count, last ID, AND last content signature
+    // This prevents stale cache when messages are mutated in-place (e.g., by trimMessages)
+    const lastMsg = messages[messages.length - 1];
+    const lastContent = lastMsg?.content;
+    const contentSig = typeof lastContent === "string" 
+      ? lastContent.length.toString() 
+      : Array.isArray(lastContent) 
+        ? `arr_${lastContent.length}` 
+        : "empty";
+    const hash = `${messages.length}_${lastMsg?.id || "none"}_${contentSig}_${messages.length > 1 ? messages[messages.length - 2]?.id || "" : ""}`;
     if (this.adaptedMessagesCache?.hash === hash) {
       return this.adaptedMessagesCache.result;
     }
@@ -278,9 +406,28 @@ export class HiruAgent extends EventEmitter {
     return result;
   }
 
+  /**
+   * Helper to get a content fingerprint for dedup checks.
+   */
+  private contentFingerprint(content: any): string {
+    if (typeof content === "string") return content.slice(0, 500);
+    if (Array.isArray(content)) {
+      return content.map((c: any) => {
+        if (typeof c === "string") return c.slice(0, 200);
+        if (c?.type === "text") return (c.text || "").slice(0, 200);
+        if (c?.type === "tool-call") return `tc:${c.toolName}:${c.toolCallId}`;
+        if (c?.type === "tool-result") return `tr:${c.toolCallId}`;
+        return JSON.stringify(c).slice(0, 100);
+      }).join("|");
+    }
+    return JSON.stringify(content || "").slice(0, 500);
+  }
+
   private computeAdaptedMessages(messages: any[]): any[] {
     const raw: any[] = [];
-    const MAX_SHRED = 8000; // Increased from 800 to 8000 bits/chars
+    const MAX_SHRED = 4000; // Reduced from 8000 — aggressive compression for token savings
+    // Track seen content fingerprints to prevent exact duplicates from entering the adapted array
+    const seenFingerprints = new Set<string>();
 
     for (let i = 0; i < messages.length; i++) {
       const msg = { ...messages[i] };
@@ -293,9 +440,16 @@ export class HiruAgent extends EventEmitter {
 
         if (msg.role === "user" || msg.role === "assistant") {
           if (!msg.content && !Array.isArray(msg.content)) continue;
+          
+          // Dedup: skip if we've seen an identical message from the same role recently
+          const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
+          if (seenFingerprints.has(fp) && !isLast) {
+            continue; // Skip duplicate
+          }
+          seenFingerprints.add(fp);
           raw.push(msg); 
         } else if (msg.role === "tool" || msg.role === "tool_result") {
-          const MAX_TOOL_SHRED = 60000; // Increased from 12000 to 60000
+          const MAX_TOOL_SHRED = 15000; // Reduced from 60000 — tool results don't need full preservation
           const content = (msg as any).content || (msg as any).result || "";
           let finalContent = content;
           if (!isLast && typeof content === "string" && content.length > MAX_TOOL_SHRED) {
@@ -328,6 +482,13 @@ export class HiruAgent extends EventEmitter {
         const isCurArray = Array.isArray(msg.content);
 
         if (!isPrevArray && !isCurArray) {
+          // CRITICAL FIX: Don't merge if the content is the same (prevents doubled output)
+          const prevStr = typeof prev.content === "string" ? prev.content : "";
+          const curStr = typeof msg.content === "string" ? msg.content : "";
+          if (prevStr === curStr || prevStr.endsWith(curStr) || curStr.endsWith(prevStr)) {
+            // Skip — duplicate or subset content
+            continue;
+          }
           prev.content = `${prev.content}\n\n${msg.content}`;
         } else {
           const prevArr = isPrevArray ? prev.content : [{ type: "text", text: prev.content }];
@@ -356,59 +517,55 @@ export class HiruAgent extends EventEmitter {
       globalFileProgress.off("fileProgress", this.boundFileProgressHandler);
       this.boundFileProgressHandler = null;
     }
+    if (this.boundShellOutputHandler) {
+      toolEvents.off("shell-output", this.boundShellOutputHandler);
+      this.boundShellOutputHandler = null;
+    }
     this.messages = [];
     this.trackedSteps = [];
     this.currentAbortController = null;
-    this.thinkingController.removeAllListeners();
+    this.attachThinkingListeners();
     if (this.checkpointManager) {
       this.checkpointManager.close();
     }
     this.todoTracker.reset();
+    this.noOpHandler.reset();
+    this.planEnforcer.reset();
     if (this.skillManager) this.skillManager.removeAllListeners();
+    if (this.pluginManager) this.pluginManager.removeAllListeners();
     this.adaptedMessagesCache = null; 
     this.activeToolCalls.clear();
   }
 
+  private attachThinkingListeners(): void {
+    this.thinkingController.removeAllListeners(); // reset dulu
+    this.thinkingController.on("thinkingBlock", () =>
+      this.emit("thinkingBlock", this.thinkingController.getDisplayState())
+    );
+    this.thinkingController.on("planReady", (plan) =>
+      this.emit("planReady", plan)
+    );
+    this.thinkingController.on("toolCallDuringThinking", (info) =>
+      this.emit("toolCallDuringThinking", info)
+    );
+  }
+
   private trimMessages() {
-    const MAX_KEEP = 30;   // Limited as requested
-    const COMPRESS_AGE = 12; // Start compressing sooner
-    const MAX_CONTENT = 3000; // Compress content more aggressively
+    const MAX_KEEP = 20;   // Further reduced for token efficiency
+    const COMPRESS_AGE = 5; // Start tiered compression after 5 messages
 
+    // Apply tiered compression: HOT (last 3) = full, WARM (4-8) = 800 chars, COLD (9+) = 200 chars
     if (this.messages.length > COMPRESS_AGE) {
-      const compressUntil = this.messages.length - 3; 
-
-      for (let i = 0; i < compressUntil; i++) {
-        const msg = this.messages[i];
-        if (typeof msg.content === "string" && msg.content.length > MAX_CONTENT) {
-          this.messages[i] = {
-            ...msg,
-            content: msg.content.slice(0, MAX_CONTENT) + "\n[...content compressed]",
-          };
-        }
-        if (Array.isArray(msg.content)) {
-          const compressed = msg.content.map((block: any) => {
-            if (block.type === "text" && typeof block.text === "string" && block.text.length > MAX_CONTENT) {
-              return { ...block, text: block.text.slice(0, MAX_CONTENT) + "\n[...compressed]" };
-            }
-            if (block.type === "tool-result") {
-              const content = (typeof block.content === "string" ? block.content : JSON.stringify(block.content)) || "";
-              if (content.length > MAX_CONTENT) {
-                return { ...block, content: content.slice(0, MAX_CONTENT) + "\n[...compressed]" };
-              }
-            }
-            return block;
-          });
-          this.messages[i] = { ...msg, content: compressed };
-        }
-      }
+      this.messages = applyTieredCompression(this.messages);
     }
 
+    // Hard cap on total message count
     if (this.messages.length > MAX_KEEP) {
-      const initialContext = this.messages.slice(0, 3); // Keep first 3 messages
-      const rest = this.messages.slice(-(MAX_KEEP - 3));
+      const initialContext = this.messages.slice(0, 2); // Keep first 2 messages (original user intent)
+      const rest = this.messages.slice(-(MAX_KEEP - 2));
       this.messages = [...initialContext, ...rest];
     }
-    this.adaptedMessagesCache = null; 
+    this.adaptedMessagesCache = null;
   }
 
   private createAbortSignal(timeoutMs: number): AbortSignal {
@@ -428,17 +585,44 @@ export class HiruAgent extends EventEmitter {
 
     return controller.signal;
   }
-  async runStreaming(input: string | any[], ctx: ProjectContext, history: any[] = []): Promise<void> {
+  async runStreaming(input: string | any[], ctx: ProjectContext): Promise<void> {
     try {
+      // ── Ollama pre-flight: verify the local server is actually up ──────
+      if (this.config.provider === "ollama") {
+        const connErr = await checkOllamaConnection(this.config.baseUrl);
+        if (connErr) {
+          this.emit("agentError", new Error(connErr));
+          return;
+        }
+      }
+
       const MAX_RUN_RETRIES = 2;
       let runAttempt = 0;
 
       while (runAttempt < MAX_RUN_RETRIES) {
         try {
-          await this.executeRunFlow(input, ctx, history);
+          await this.executeRunFlow(input, ctx);
           break; // Success!
         } catch (e: any) {
           runAttempt++;
+
+          // ── Friendly Ollama connection error ──────────────────────────
+          const isOllamaConnErr =
+            e?.name === "_OllamaError" ||
+            (e?.cause?.code === "ECONNREFUSED") ||
+            (e?.cause?.cause?.code === "ECONNREFUSED") ||
+            (e?.message?.includes("fetch failed") && this.config.provider === "ollama");
+
+          if (isOllamaConnErr) {
+            const friendly = new Error(
+              `Ollama disconnected mid-session.\n` +
+              `  → Restart Ollama: ollama serve\n` +
+              `  → Then try your request again.`
+            );
+            this.emit("agentError", friendly);
+            break;
+          }
+
           const isRetryable = e.name === "AI_RetryError" || e.statusCode === 429 || e.statusCode === 503 || e.message?.includes("rate limit");
           
           if (isRetryable && runAttempt < MAX_RUN_RETRIES) {
@@ -456,17 +640,14 @@ export class HiruAgent extends EventEmitter {
     }
   }
 
-  private async executeRunFlow(input: string | any[], ctx: ProjectContext, history: any[]) {
+  private async executeRunFlow(input: string | any[], ctx: ProjectContext) {
       this.ctx = ctx; // Capture context for subagents
       
-      // Update internal messages with history from TUI
-      if (history.length > 0) {
-        this.messages = [...history];
-        this.loopDetector.reset(); // Reset counts even with history (Fix 5A)
-      } else {
-        this.cleanup(); // Only cleanup if no history (fresh start)
-        this.loopDetector.reset();
+      if (this.messages.length === 0) {
+        this.cleanup();
       }
+      this.loopDetector.reset();
+      this.noOpHandler.reset();
 
       if (input) {
         if (typeof input === "string" && input.trim()) {
@@ -476,27 +657,121 @@ export class HiruAgent extends EventEmitter {
         }
       }
 
+      // Classify task BEFORE any LLM call — determines tool selection for entire turn
+      this.currentTaskCategory = typeof input === "string" ? classifyTask(input) : "full";
+
       // Minimalist greeting filter - Only for extremely short greetings to keep response time low.
       // For everything else, let the LLM's brain decide (Planning Phase).
       const inputStr = typeof input === "string" ? input.trim() : "";
       const shortGreetings = /^(halo|hello|hi|p|pagi|siang|sore|malam|oi|hey|hiru)$/i;
       const isShortGreeting = inputStr && shortGreetings.test(inputStr) && inputStr.split(/\s+/).length < 3;
       
-      if (isShortGreeting) {
-         // Fast path for simple greetings
+      // Conversational query detector — informational/chat queries that do not require an execution plan.
+      // Example: "what features do you have", "what can you do", "explain how you work"
+      const isConversationalQuery = !isShortGreeting && inputStr && (() => {
+        const lower = inputStr.toLowerCase();
+        const wordCount = inputStr.split(/\s+/).length;
+        
+        // Informational question patterns
+        const questionPatterns = /^(apa|siapa|kapan|dimana|gimana|bagaimana|berapa|kenapa|mengapa|boleh|bisa|apakah|how|what|who|when|where|why|can you|do you|are you|is there|tell me|explain|describe|list|kamu)/i;
+        
+        // Action indicators (Not conversational)
+        const actionWords = /(buatkan|buat|bikin|create|write|edit|fix|perbaiki|tambahkan|hapus|delete|rename|install|setup|deploy|refactor|implement|ubah|ganti|run|jalankan|update|tolong.*(?:buat|tulis|edit|fix)|cek|cari|carikan|check|search|find|lookup|tampilkan|kasih|ambil|get|fetch|show)/i;
+        
+        // Explicit "no action" indicators (Strongly conversational)
+        const noActionHints = /(gausa|gausah|ga usah|jangan|don't|tanpa|no need|just tell|kasi tau|kasih tau|explain only)/i;
+        
+        // If there's a "no action" hint -> conversational
+        if (noActionHints.test(lower) && !actionWords.test(lower)) return true;
+        
+        // If short query AND question pattern AND no action word -> conversational
+        if (wordCount <= 15 && questionPatterns.test(lower) && !actionWords.test(lower)) return true;
+        
+        // Very short question without action words
+        if (wordCount <= 6 && !actionWords.test(lower) && lower.includes("?")) return true;
+        
+        return false;
+      })();
+
+      if (isShortGreeting || isConversationalQuery) {
+         // Fast path for greetings and conversational queries
+         // For simple queries: use MINIMAL system prompt (saves ~1000 tokens)
+         const useMinimalPrompt = this.currentTaskCategory === "chat" || this.currentTaskCategory === "web";
          const coreMessages = this.adaptMessages(this.messages);
-         const greetingResult = await streamText({
+         const chatResult = await streamText({
             model: this.model,
-            system: CHAT_SYSTEM_PROMPT(buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot)),
+            system: useMinimalPrompt
+              ? MINIMAL_SYSTEM_PROMPT  // ~30 tokens vs ~1500 tokens — 98% savings on system prompt!
+              : this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT),
             messages: coreMessages,
+            tools: this.getSmartTools({ isReadonly: true }), // Smart tool selection
             abortSignal: this.createAbortSignal(30000),
-            maxRetries: 5
+            maxOutputTokens: 1024, // Short answers for chat
+            maxRetries: 2
          });
 
          const tagFilter = TagStripper.createStreamingFilter();
-         for await (const text of greetingResult.textStream) {
-            const { display } = tagFilter.feed(text);
-            if (display) this.emit("token", display);
+         let hasOutput = false;
+         let responseText = "";
+
+         // Heartbeat — detect stall in chat path (same as planning)
+         let lastDisplayTime = Date.now();
+         const chatHeartbeat = setInterval(() => {
+           if (Date.now() - lastDisplayTime > 15_000) {
+             // 15s tanpa display token → emit status agar user tau masih jalan
+             this.emit("status", "Model is thinking deeply...");
+             lastDisplayTime = Date.now(); // reset agar status muncul lagi setiap 15s
+           }
+         }, 3000);
+
+         try {
+           for await (const text of chatResult.textStream) {
+              const { display } = tagFilter.feed(text);
+              if (display) {
+                this.emit("token", display);
+                responseText += display;
+                hasOutput = true;
+                lastDisplayTime = Date.now(); // Reset heartbeat on DISPLAY token, not any token
+              }
+           }
+           
+           const flushed = tagFilter.flush();
+           if (flushed.display) {
+             this.emit("token", flushed.display);
+             responseText += flushed.display;
+             hasOutput = true;
+           }
+         } catch (e: any) {
+           // Stream error or abort — emit and continue
+           if (!hasOutput) {
+             this.emit("status", "Retrying response...");
+           }
+         } finally {
+           clearInterval(chatHeartbeat);
+         }
+         
+         if (!hasOutput) {
+            this.emit("status", "Hiru is reflecting on response...");
+            // Forced retry for empty responses
+            try {
+              const retry = await generateText({
+                 model: this.model,
+                 system: this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT) + "\n## MANDATORY: YOUR PREVIOUS RESPONSE HAD NO VISIBLE TEXT. YOU MUST PROVIDE A VISIBLE RESPONSE FOR THE USER NOW. DO NOT JUST THINK.",
+                 messages: coreMessages,
+                 abortSignal: this.createAbortSignal(15000),
+              });
+              responseText = TagStripper.strip(retry.text || "Hello! How can I assist you today? 🌸");
+              this.emit("token", responseText);
+            } catch {
+              responseText = "Sorry, an error occurred. Please try again.";
+              this.emit("token", responseText);
+            }
+         }
+
+         // Ensure response is always kept in history
+         if (responseText.trim()) {
+           this.messages.push({ id: uuidv4(), role: "assistant", content: responseText });
+           this.trimMessages();
          }
          return;
       }
@@ -518,7 +793,7 @@ export class HiruAgent extends EventEmitter {
       this.emit("status", "Gathering project snapshot...");
       this.activeSnapshot = await ProjectSnapshot.get(ctx);
       
-      // Auto-compact if too many messages (Mimicking Claude Code)
+      // Auto-compact if too many messages (trigger sooner for token savings)
       if (this.messages.length > 30) {
         this.emit("status", "Compacting session context...");
         this.messages = await this.compactor.prune(this.messages);
@@ -569,11 +844,11 @@ export class HiruAgent extends EventEmitter {
     const result = await streamText({
       model: this.model,
       messages: coreMessages,
-      system: PLANNING_SYSTEM_PROMPT(buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot)),
-      tools: this.getTools({ isReadonly: true }),
+      system: this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT),
+      tools: this.getSmartTools({ isReadonly: true }), // Smart selection — saves 3000-5000 tokens on tools
       abortSignal: this.createAbortSignal(PLANNING_TIMEOUT),
       maxRetries: 5,
-      maxOutputTokens: 1024,  // ← TAMBAHKAN: planning tidak butuh banyak token
+      maxOutputTokens: 2048, // Plans are short — 2048 is plenty
       onStepFinish: (ev: any) => {
         if (ev.usage) {
           this.tokenUsage.prompt += ev.usage.promptTokens || 0;
@@ -581,13 +856,14 @@ export class HiruAgent extends EventEmitter {
         }
         const respMsgs = ev.response?.messages || ev.responseMessages;
         if (respMsgs) {
-            const newMsgs = respMsgs.map((m: any) => ({
-              id: uuidv4(), role: m.role, content: m.content
-            }));
-            for (const n of newMsgs) {
-              const last = this.messages[this.messages.length - 1];
-              if (last && last.role === n.role && last.content === n.content) continue;
-              this.messages.push(n);
+            for (const m of respMsgs) {
+              // Robust dedup: check last 5 messages for content match (not just the very last one)
+              const fp = this.contentFingerprint(m.content);
+              const isDuplicate = this.messages.slice(-5).some(existing => 
+                existing.role === m.role && this.contentFingerprint(existing.content) === fp
+              );
+              if (isDuplicate) continue;
+              this.messages.push({ id: uuidv4(), role: m.role, content: m.content });
             }
             this.trimMessages();
         }
@@ -595,15 +871,23 @@ export class HiruAgent extends EventEmitter {
     });
 
     let lastTokenTime = Date.now();
+    let lastDisplayTime = Date.now(); // Track display tokens separately from all tokens
     let staledAlerted = false;
-    const HEARTBEAT_MS = 20_000; // turun dari 60 detik → 20 detik
+    const HEARTBEAT_MS = 20_000; // Hard abort if NO tokens at all for 20s
     let xmlToolCallDetected = false;
     const heartbeat = setInterval(() => {
       const elapsed = Date.now() - lastTokenTime;
-      if (elapsed > 10_000 && !staledAlerted) {  // turun dari 30 detik → 10 detik
+      const displayElapsed = Date.now() - lastDisplayTime;
+
+      // User-facing stall alert: no DISPLAY tokens for 10s
+      // (model may still be sending thinking tokens invisibly)
+      if (displayElapsed > 10_000 && !staledAlerted) {
         staledAlerted = true;
         this.emit("thinkingStalled", { elapsed: 10 });
+        this.emit("status", "Model is reasoning deeply...");
       }
+
+      // Hard abort: no tokens AT ALL for 20s (true network stall)
       if (elapsed > HEARTBEAT_MS) {
         this.currentAbortController?.abort(new Error(`Model stalled (${HEARTBEAT_MS/1000}s silence). Check your internet or try a faster model.`));
       }
@@ -611,7 +895,7 @@ export class HiruAgent extends EventEmitter {
 
     try {
       for await (const chunk of result.fullStream) {
-        lastTokenTime = Date.now();
+        lastTokenTime = Date.now(); // Reset on ANY chunk (for network stall detection)
         if (chunk.type === "tool-call") {
           const name = chunk.toolName;
           const args = (chunk as any).args || chunk.input;
@@ -632,6 +916,8 @@ export class HiruAgent extends EventEmitter {
           }
           if (display) {
             displayBuffer += display;
+            lastDisplayTime = Date.now(); // Reset ONLY on visible display tokens
+            staledAlerted = false;         // Allow re-alert if it stalls again
             // Emit tokens to UI immediately (Fixed: now conversational replies aren't lost)
             this.emit("token", display); 
           }
@@ -644,6 +930,10 @@ export class HiruAgent extends EventEmitter {
         if (chunk.type === "error") throw chunk.error;
       }
     } catch (e: any) {
+      if (depth < 1) {
+        this.emit("status", "System is retrying planning phase...");
+        return this.runPlanningPhase(ctx, depth + 1);
+      }
       this.emit("error", e);
       return { plan: null, responded: false };
     } finally {
@@ -707,11 +997,18 @@ export class HiruAgent extends EventEmitter {
     }
 
     const lowerText = displayBuffer.toLowerCase();
-    const isLazyPreamble = !planBuffer && displayBuffer.length > 10 && (
-        lowerText.includes("baik") || lowerText.includes("siap") || 
-        lowerText.includes("tentu") || lowerText.includes("akan") || 
-        lowerText.includes("i will") || lowerText.includes("looking") ||
-        lowerText.includes("trying") || lowerText.includes("lihat")
+    // isLazyPreamble: Hanya trigger jika respons PENDEK dan jelas bukan jawaban substantif.
+    // Hindari kata umum bahasa Indonesia yang bisa muncul di respons normal.
+    const isLazyPreamble = !planBuffer && displayBuffer.length > 10 && displayBuffer.length < 200 && (
+        /^(baik|siap|tentu|oke|ok),?\s/i.test(lowerText) ||           // Dimulai dgn kata preamble
+        lowerText.includes("saya akan coba") ||
+        lowerText.includes("i will try") ||
+        lowerText.includes("i'll look") ||
+        lowerText.includes("let me try") ||
+        lowerText.includes("saya lihat dulu") ||
+        lowerText.includes("cara simpan") || lowerText.includes("copy text") ||
+        lowerText.includes("bisa simpan") || lowerText.includes("silakan simpan") ||
+        lowerText.includes("paste ke")
     );
 
     if (isLazyPreamble && depth === 0) {
@@ -752,16 +1049,22 @@ export class HiruAgent extends EventEmitter {
   }
 
   private async runExecutionPhase(plan: ParsedPlan | null, ctx: ProjectContext): Promise<void> {
+    this.thinkingController.reset();
+    // Reset no-op handler and plan enforcer for each execution phase
+    this.noOpHandler.reset();
+    this.planEnforcer.reset();
+
     if (plan) {
       this.initSteps(plan);
-      // Ensure model has a clean assistant starting point with the plan
+      this.planEnforcer.setApprovedPlan(plan);
+
+      // Silence internal nudge messages from the UI to make it feel direct
       const msg = { 
         id: uuidv4(), 
         role: "assistant" as const, 
         content: `I am starting the execution of the approved plan now: "${plan.goal}".` 
       };
       this.messages.push(msg);
-      this.emit("contextMessage", msg);
 
       const userMsg = { 
         id: uuidv4(), 
@@ -770,20 +1073,20 @@ export class HiruAgent extends EventEmitter {
       };
       this.messages.push(userMsg);
       this.emit("planApproved", plan);
-      this.emit("contextMessage", userMsg);
+      this.emit("status", "Starting execution phase...");
       this.trimMessages();
     }
 
     const EXECUTION_TIMEOUT = this.config.executionTimeoutMs ?? 10 * 60 * 1000;
     const result = streamText({
       model: this.model,
-      system: EXECUTION_SYSTEM_PROMPT(buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot)),
+      system: this.getSystemPrompt(ctx, EXECUTION_SYSTEM_PROMPT),
       messages: this.adaptMessages(this.messages),
-      tools: this.getTools(),
+      tools: this.getSmartTools(), // Smart selection — only relevant tools for this task
       stopWhen: stepCountIs(this.maxIterations),
       abortSignal: this.createAbortSignal(EXECUTION_TIMEOUT),
       maxRetries: 5,
-      maxOutputTokens: 4096,  // ← TAMBAHKAN: cukup untuk execution tapi tetap bounded
+      maxOutputTokens: 4096,
       onStepFinish: (ev: any) => {
         if (ev.usage) {
           this.tokenUsage.prompt += ev.usage.promptTokens || 0;
@@ -792,9 +1095,12 @@ export class HiruAgent extends EventEmitter {
         const respMsgs = ev.response?.messages || ev.responseMessages;
         if (respMsgs) {
             for (const m of respMsgs) {
-              const last = this.messages[this.messages.length - 1];
-              // Prevent exact duplicate appends (Fix Halu Parah)
-              if (last && last.role === m.role && last.content === m.content) continue;
+              // Robust dedup: check last 5 messages for content match
+              const fp = this.contentFingerprint(m.content);
+              const isDuplicate = this.messages.slice(-5).some(existing => 
+                existing.role === m.role && this.contentFingerprint(existing.content) === fp
+              );
+              if (isDuplicate) continue;
               this.messages.push({ id: uuidv4(), role: m.role, content: m.content });
             }
             this.trimMessages();
@@ -807,8 +1113,16 @@ export class HiruAgent extends EventEmitter {
     let totalToolCalls = 0;
     
     let lastTokenTime = Date.now();
+    let lastExecDisplayTime = Date.now();
+    let execStallAlerted = false;
     const HEARTBEAT_MS = 60000;
     const heartbeat = setInterval(() => {
+      const displayElapsed = Date.now() - lastExecDisplayTime;
+      // Alert user if no visible output for 15s during execution
+      if (displayElapsed > 15_000 && !execStallAlerted) {
+        execStallAlerted = true;
+        this.emit("status", "Model is processing internally...");
+      }
       if (Date.now() - lastTokenTime > HEARTBEAT_MS) {
         this.currentAbortController?.abort(new Error(`Model stalled during execution (${HEARTBEAT_MS/1000}s silence).`));
       }
@@ -819,9 +1133,15 @@ export class HiruAgent extends EventEmitter {
         lastTokenTime = Date.now();
         const curIdx = Math.min(this.currentStepIndex, Math.max(0, (this.trackedSteps?.length || 1) - 1));
         if (chunk.type === "text-delta") {
-          const { display } = execTagFilter.feed(chunk.text);
+          const { display, thinking } = execTagFilter.feed(chunk.text);
+          if (thinking) {
+            this.thinkingController.feedToken(thinking);
+            this.emit("thinkingState", this.thinkingController.getDisplayState());
+          }
           if (display) {
             fullText += display;
+            lastExecDisplayTime = Date.now();
+            execStallAlerted = false;
             this.emit("token", display);
           }
         } else if (chunk.type === "tool-call") {
@@ -833,6 +1153,12 @@ export class HiruAgent extends EventEmitter {
           
           this.activeToolCalls.set(toolId, { name: toolName, args: toolArgs });
           
+          // Plan enforcement — soft validation
+          const planCheck = this.planEnforcer.validateToolCall(toolName, toolArgs);
+          if (!planCheck.valid) {
+            this.emit("info", `⚠️ ${planCheck.message}`);
+          }
+
           this.todoTracker.add(toolId, toolName, toolArgs);
           this.emit("todoUpdate", this.todoTracker.getAll());
 
@@ -850,6 +1176,43 @@ export class HiruAgent extends EventEmitter {
             
             const call = this.activeToolCalls.get(resultId);
             if (call) {
+              // ✨ SPECIAL: update_plan handling (OpenClaw style)
+              if (call.name === "update_plan" && !isError) {
+                const res = (chunk as any).result;
+                if (res && res.steps) {
+                  this.emit("info", "🔄 Syncing new roadmap...");
+                  this.initSteps({ 
+                    raw: "",
+                    goal: res.explanation || "Updated mission goal", 
+                    steps: res.steps, 
+                    filesAffected: [],
+                    assumptions: [],
+                    risks: [],
+                    isDestructive: false,
+                    estimatedSteps: res.steps.length,
+                    confidence: "high"
+                  });
+                  // Find the next in_progress step
+                  const nextIdx = res.steps.findIndex((s: any) => s.status === "in_progress");
+                  if (nextIdx !== -1) this.currentStepIndex = nextIdx;
+                }
+              }
+
+              // High-Quality Verify Step (Anti-Hallucination)
+              const verification = await StepVerifier.verify(call.name, call.args, (chunk as any).result, this.ctx);
+              if (!verification.verified) {
+                const failMsg = `⚠️ VERIFICATION FAILED: ${verification.message} ${verification.suggestion || ""}`;
+                this.emit("info", failMsg);
+                
+                // Inject a corrective message into the conversation to force the AI to fix it
+                this.messages.push({ 
+                  id: uuidv4(), 
+                  role: "user", 
+                  content: `CRITICAL: Your last action '${call.name}' failed verification. ${verification.message} ${verification.suggestion || ""}`
+                });
+                this.trimMessages();
+              }
+
               this.loopDetector.record(call.name, call.args, isError);
               this.activeToolCalls.delete(resultId);
             }
@@ -867,89 +1230,165 @@ export class HiruAgent extends EventEmitter {
           }
         }
       }
+
+      const flushed = execTagFilter.flush();
+      if (flushed.display) {
+        fullText += flushed.display;
+        this.emit("token", flushed.display);
+      }
+
+      // ✨ NoOpHandler: replaces inline no-op logic with escalating retry + hard stop
+      if (totalToolCalls > 0) {
+        this.noOpHandler.reset();
+      } else if (fullText.trim() && !fullText.includes("<plan>")) {
+        const noOpResult = this.noOpHandler.handleNoOp(plan);
+        if (noOpResult.action === "retry") {
+          this.messages.push({ id: uuidv4(), role: "user", content: noOpResult.message });
+          await this.runExecutionRetry(ctx);
+          return;
+        } else {
+          // Abort — agent failed to use tools after max retries
+          this.emit("token", "\n" + noOpResult.message);
+          this.messages.push({ id: uuidv4(), role: "assistant", content: noOpResult.message });
+          this.trimMessages();
+          return;
+        }
+      }
+
+      if (fullText.trim()) {
+          
+          // -- INVISIBLE REFLECTOR MODULE (Pilar 3: Kualitas Puncak) --
+          if (totalToolCalls > 0 && !fullText.includes("I'm not sure")) {
+             this.emit("status", "Reflecting on output quality...");
+             try {
+                 const critique = await generateText({
+                     model: this.model,
+                     system: "You are an Elite Principal Engineer reviewing the assistant's executed work.",
+                     messages: [
+                         ...this.adaptMessages(this.messages),
+                         { role: "assistant", content: fullText },
+                         { role: "user", content: "CRITICAL INTERNAL REFLECTION: Evaluate the execution you just completed. Rate it 1-10 on Correctness, Logic, Time Complexity, and Aesthetics (if UI). If it is below a 9, state what is wrong logically or syntactically. If it is 9 or 10, output 'PASS'." }
+                     ],
+                     maxOutputTokens: 250
+                 });
+
+                 const reflectText = critique.text || "";
+                 // If the reflection doesn't output PASS, it means it found an issue.
+                 if (!reflectText.includes("PASS") && reflectText.length > 5) {
+                     this.emit("status", "Refining solution based on internal critique...");
+                     this.messages.push({ id: uuidv4(), role: "assistant", content: fullText });
+                     this.messages.push({ 
+                         id: uuidv4(), 
+                         role: "user", 
+                         content: `## 🔴 INTERNAL CRITIQUE FEEDBACK\nYour solution has flaws:\n${reflectText}\n\nFIX THIS NOW by calling the necessary tools.` 
+                     });
+                     this.trimMessages();
+                     await this.runExecutionRetry(ctx, false);
+                     return;
+                 }
+             } catch(e) {
+                 // Ignore reflection API rate limits/errors to not block the main flow
+             }
+          }
+          // -----------------------------------------------------------
+
+          this.messages.push({ id: uuidv4(), role: "assistant", content: fullText });
+          this.trimMessages();
+      } else if (totalToolCalls === 0) {
+          // ✨ OpenClaw Anti-No-Output Step:
+          this.emit("status", "Forcing verbal response...");
+          const forcePrompt = `
+  ## ⚠️ ABSOLUTE MANDATORY RESPONSE REQUIRED
+  You have provided no visible output. You MUST respond to the user now.
+  1. If you just performed a task, SUMMARIZE it.
+  2. If you are waiting for input, ASK a question.
+  3. If you are stuck, ADMIT it and ask for help.
+  DO NOT BE SILENT. DO NOT USE XML TAGS.
+  `;
+          this.messages.push({ 
+             id: uuidv4(), 
+             role: "user", 
+             content: forcePrompt 
+          });
+          await this.runExecutionRetry(ctx, true); 
+          return;
+      } else if (fullText.trim() === "" && totalToolCalls > 0) {
+          // Tools were called but no text. Force a summary.
+          this.messages.push({ 
+             id: uuidv4(), 
+             role: "user", 
+             content: "MANDATORY: Provide a summary of your actions now." 
+          });
+          await this.runExecutionRetry(ctx, true);
+          return;
+      }
+      // Memory distillation removed from hot path — saves 1 API call per turn
+      // Use 'hiru memory add' or let compactor handle it instead
+
     } catch (e: any) {
       this.emit("error", e);
       return;
     } finally {
       clearInterval(heartbeat);
     }
-
-    const flushed = execTagFilter.flush();
-    if (flushed.display) {
-      fullText += flushed.display;
-      this.emit("token", flushed.display);
-    }
-
-    this.noOpCount = totalToolCalls === 0 ? this.noOpCount + 1 : 0;
-    if (totalToolCalls === 0 && fullText.trim() && !fullText.includes("<plan>") && this.noOpCount < 2) {
-        this.messages.push({ id: uuidv4(), role: "user", content: "USE TOOLS NOW. Do not just talk." });
-        await this.runExecutionRetry(ctx);
-        return;
-    }
-
-    if (fullText.trim()) {
-       this.messages.push({ id: uuidv4(), role: "assistant", content: fullText });
-       this.trimMessages();
-    } else if (totalToolCalls === 0) {
-       const fallback = "I understand. How can I help you with this project?";
-       this.messages.push({ id: uuidv4(), role: "assistant", content: fallback });
-       this.emit("token", fallback);
-    } else {
-       // Tools were called but no textual response was generated (Minimalism/Law 10 side effect)
-       // Force a summary turn
-       this.messages.push({ id: uuidv4(), role: "user", content: "Task complete. Provide a textual summary of your results for me now." });
-       await this.runExecutionRetry(ctx, true); // True = summary mode
-       return;
-    }
   }
 
-  private async runExecutionRetry(ctx: ProjectContext, isSummary = false): Promise<void> {
-    const retryPrompt = buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot) + 
-      (isSummary ? "\n## MANDATORY: PROVIDE A COMPLETE SUMMARY OF THE PREVIOUS TOOL RESULTS" : "\n## MANDATORY: USE TOOLS NOW");
-    
-    const result = streamText({
-      model: this.model, 
-      system: retryPrompt, 
-      messages: this.adaptMessages(this.messages),
-      tools: isSummary ? {} : this.getTools(), // No tools in summary mode to avoid loops
-      stopWhen: stepCountIs(this.maxIterations), 
-      abortSignal: this.currentAbortController?.signal,
-      maxRetries: 5,
-      onStepFinish: (ev: any) => {
-        if (ev.usage) {
-          this.tokenUsage.prompt += ev.usage.promptTokens || 0;
-          this.tokenUsage.completion += ev.usage.completionTokens || 0;
-        }
-      },
-    });
-    let retryText = "";
-    const retryTagFilter = TagStripper.createStreamingFilter();
+  // Memory distillation removed from automatic pipeline to save tokens.
+  // Previously ran an extra LLM call after EVERY execution turn.
+  // Users can manually save learnings with 'hiru memory add <text>'.
 
-    for await (const chunk of result.fullStream) {
-      if (chunk.type === "text-delta") { 
-        const { display } = retryTagFilter.feed(chunk.text);
-        if (display) {
-          retryText += display; 
-          this.emit("token", display); 
+  private async runExecutionRetry(ctx: ProjectContext, isSummary = false): Promise<void> {
+    try {
+      const result = streamText({
+        model: this.model, 
+        system: this.getSystemPrompt(ctx, isSummary ? 
+          (p) => p + "\n## MANDATORY: PROVIDE A COMPLETE SUMMARY OF THE PREVIOUS TOOL RESULTS" : 
+          (p) => p + "\n## MANDATORY: USE TOOLS NOW"
+        ), 
+        messages: this.adaptMessages(this.messages),
+        tools: isSummary ? {} : this.getTools(), // No tools in summary mode to avoid loops
+        stopWhen: stepCountIs(this.maxIterations), 
+        abortSignal: this.currentAbortController?.signal,
+        maxRetries: 5,
+        onStepFinish: (ev: any) => {
+          if (ev.usage) {
+            this.tokenUsage.prompt += ev.usage.promptTokens || 0;
+            this.tokenUsage.completion += ev.usage.completionTokens || 0;
+          }
+        },
+      });
+      let retryText = "";
+      const retryTagFilter = TagStripper.createStreamingFilter();
+
+      for await (const chunk of result.fullStream) {
+        if (chunk.type === "text-delta") { 
+          const { display } = retryTagFilter.feed(chunk.text);
+          if (display) {
+            retryText += display; 
+            this.emit("token", display); 
+          }
         }
+        else if (chunk.type === "tool-call") this.emit("toolCall", chunk);
+        else if (chunk.type === "tool-result") this.emit("toolResult", chunk);
       }
-      else if (chunk.type === "tool-call") this.emit("toolCall", chunk);
-      else if (chunk.type === "tool-result") this.emit("toolResult", chunk);
-    }
-    
-    // Final flush
-    const flushed = retryTagFilter.flush();
-    if (flushed.display) {
-       retryText += flushed.display;
-       this.emit("token", flushed.display);
-    }
-    if (retryText.trim()) {
-       this.messages.push({ id: uuidv4(), role: "assistant", content: retryText });
-       this.trimMessages();
-    } else {
-       const fallback = "I understand. Is there anything else I can help you with?";
-       this.messages.push({ id: uuidv4(), role: "assistant", content: fallback });
-       this.emit("token", fallback);
+      
+      // Final flush
+      const flushed = retryTagFilter.flush();
+      if (flushed.display) {
+         retryText += flushed.display;
+         this.emit("token", flushed.display);
+      }
+      if (retryText.trim()) {
+         this.messages.push({ id: uuidv4(), role: "assistant", content: retryText });
+         this.trimMessages();
+      } else {
+         const fallback = "I understand. Is there anything else I can help you with?";
+         this.messages.push({ id: uuidv4(), role: "assistant", content: fallback });
+         this.emit("token", fallback);
+      }
+    } catch (e: any) {
+      // Jangan re-throw, cukup emit sebagai info agar tidak crash caller
+      this.emit("info", `Retry stream ended: ${(e as any).message}`);
     }
   }
 
@@ -963,7 +1402,9 @@ export class HiruAgent extends EventEmitter {
     const tagFilter = TagStripper.createStreamingFilter();
     let planBuffer = "";
     const result = await streamText({
-      model: this.model, system: PLANNING_SYSTEM_PROMPT(buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot)), messages: this.adaptMessages(this.messages),
+      model: this.model, 
+      system: this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT), 
+      messages: this.adaptMessages(this.messages),
       abortSignal: this.createAbortSignal(this.config.planningTimeoutMs ?? 180000),
     });
     for await (const chunk of result.fullStream) {
@@ -995,7 +1436,7 @@ export class HiruAgent extends EventEmitter {
       iterations++;
       const response = await generateText({
         model: this.model,
-        system: buildSystemPrompt(ctx, this.globalMemory, this.skillManager, this.activeSnapshot),
+        system: this.getSystemPrompt(ctx),
         messages: this.adaptMessages(this.messages),
         tools: this.getTools(),
       });

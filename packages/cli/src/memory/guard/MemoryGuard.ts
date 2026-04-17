@@ -24,6 +24,8 @@ export class MemoryGuard extends EventEmitter {
   private interval: NodeJS.Timeout | null = null;
   private lastGC = 0;
   private readonly GC_COOLDOWN_MS = 15_000; // Do not spam GC
+  private criticalEmitted = false;   // Prevent repeated critical emissions
+  private lastWarnTime = 0;         // Throttle warn events
 
   constructor(
     private thresholds: MemoryThresholds = {
@@ -63,9 +65,15 @@ export class MemoryGuard extends EventEmitter {
     const stats = this.getStats();
 
     if (stats.heapUsedMB >= this.thresholds.criticalMB) {
-      this.emit("critical", stats);
+      if (!this.criticalEmitted) {   // Hanya emit sekali
+        this.criticalEmitted = true;
+        this.emit("critical", stats);
+      }
       return;
     }
+
+    // Reset flag jika memory sudah turun di bawah critical
+    this.criticalEmitted = false;
 
     if (stats.heapUsedMB >= this.thresholds.emergencyMB) {
       this.emit("emergency", stats);
@@ -80,7 +88,12 @@ export class MemoryGuard extends EventEmitter {
     }
 
     if (stats.heapUsedMB >= this.thresholds.warnMB) {
-      this.emit("warn", stats);
+      // Throttle warn — max sekali per menit
+      const now = Date.now();
+      if (!this.lastWarnTime || now - this.lastWarnTime > 60_000) {
+        this.lastWarnTime = now;
+        this.emit("warn", stats);
+      }
     }
   }
 

@@ -49,21 +49,20 @@ export function ReasoningDisplay({
     <Box flexDirection="column" marginTop={1} marginBottom={0}>
       {/* Header baris \u2014 "hiru is thinking..." */}
       <Box flexDirection="row" gap={1}>
-        <Text color="#CC785C" bold>
-          hiru
+        <Text color="#D97757" bold>
+          Hiru is reasoning
         </Text>
         {isThinking ? (
           <Spinner type="dots" />
         ) : (
           <Text color="green">{SYMBOLS.done}</Text>
         )}
-        <Text color="white">
-          {isThinking ? "thinking\u2026" : "thought for"}{" "}
-          {formatElapsed(elapsedMs)}
+        <Text color="blackBright" dimColor>
+          ({formatElapsed(elapsedMs)})
         </Text>
         {toolCallsCount > 0 && (
-          <Text color="white" dimColor>
-            \u00b7 {toolCallsCount} file{toolCallsCount !== 1 ? "s" : ""} read
+          <Text color="blackBright" dimColor>
+            · {toolCallsCount} context read
           </Text>
         )}
         {!isExpanded && (

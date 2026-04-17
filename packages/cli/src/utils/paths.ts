@@ -13,9 +13,9 @@ export const HIRU_DIR = path.join(os.homedir(), ".hiru");
 export const HIRU_SCREENSHOTS_DIR = path.join(HIRU_DIR, "screenshot");
 
 /**
- * .hiru/file for files received from Telegram or other sources
+ * .hiru/received for files received from user/sources
  */
-export const HIRU_FILES_DIR = path.join(HIRU_DIR, "file");
+export const HIRU_RECEIVED_DIR = path.join(HIRU_DIR, "received");
 
 /**
  * .hiru/data for internal hiru storage (memory, sessions, etc)
@@ -23,12 +23,18 @@ export const HIRU_FILES_DIR = path.join(HIRU_DIR, "file");
 export const HIRU_DATA_DIR = path.join(HIRU_DIR, "data");
 
 /**
+ * .hiru/exports for files created by hiru for the user
+ */
+export const HIRU_EXPORTS_DIR = path.join(HIRU_DIR, "exports");
+
+/**
  * Ensure all standard hiru directories exist and migrate old files if needed.
  */
 export async function ensureHiruDirs() {
   await fs.mkdir(HIRU_SCREENSHOTS_DIR, { recursive: true });
-  await fs.mkdir(HIRU_FILES_DIR, { recursive: true });
+  await fs.mkdir(HIRU_RECEIVED_DIR, { recursive: true });
   await fs.mkdir(HIRU_DATA_DIR, { recursive: true });
+  await fs.mkdir(HIRU_EXPORTS_DIR, { recursive: true });
 
   // Migration for cleaner root: Move DBs and memory files from .hiru to .hiru/data
   const migrateFiles = [
@@ -63,8 +69,34 @@ export function getScreenshotPath(filename?: string) {
 }
 
 /**
- * Get a path for a saved file.
+ * Get a path for a file received from user.
  */
-export function getFilePath(filename: string) {
-  return path.join(HIRU_FILES_DIR, filename);
+export function getReceivedPath(filename: string) {
+  return path.join(HIRU_RECEIVED_DIR, filename);
+}
+
+/**
+ * Get a path for a file exported by hiru.
+ */
+export function getExportPath(filename: string) {
+  return path.join(HIRU_EXPORTS_DIR, filename);
+}
+
+/**
+ * Resolves a path, expanding ~ to home directory.
+ */
+export function resolveSafePath(p: string) {
+  const trimmed = p.trim();
+  if (trimmed.startsWith("~")) {
+    return path.join(os.homedir(), trimmed.slice(1));
+  }
+  return path.resolve(process.cwd(), trimmed);
+}
+
+/**
+ * Checks if a path is within allowed directories (CWD or .hiru)
+ */
+export function isSafePath(resolvedPath: string) {
+  const cwd = process.cwd();
+  return resolvedPath.startsWith(cwd) || resolvedPath.startsWith(HIRU_DIR);
 }

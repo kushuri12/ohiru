@@ -13,7 +13,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "anthropic",
     label: "Anthropic",
     description: "Claude — best for coding & complex reasoning",
-    icon: "🧠",
+    icon: "",
     apiKeyEnv: "ANTHROPIC_API_KEY",
     apiKeyLabel: "Anthropic API Key",
     apiKeyUrl: "https://console.anthropic.com/settings/keys",
@@ -45,7 +45,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "openai",
     label: "OpenAI",
     description: "GPT-4o, o1, o3 — most popular, broad ecosystem",
-    icon: "✦",
+    icon: "",
     apiKeyEnv: "OPENAI_API_KEY",
     apiKeyLabel: "OpenAI API Key",
     apiKeyUrl: "https://platform.openai.com/api-keys",
@@ -77,7 +77,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "google",
     label: "Google",
     description: "Gemini — largest context window, free tier available",
-    icon: "✶",
+    icon: "",
     apiKeyEnv: "GOOGLE_GENERATIVE_AI_API_KEY",
     apiKeyLabel: "Google AI API Key",
     apiKeyUrl: "https://aistudio.google.com/app/apikey",
@@ -100,7 +100,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "groq",
     label: "Groq",
     description: "Llama & Mixtral on custom hardware — FASTEST in the world",
-    icon: "⚡",
+    icon: "",
     apiKeyEnv: "GROQ_API_KEY",
     apiKeyLabel: "Groq API Key",
     apiKeyUrl: "https://console.groq.com/keys",
@@ -123,7 +123,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "mistral",
     label: "Mistral AI",
     description: "Mistral — European models, data privacy, Apache license",
-    icon: "🌬",
+    icon: "",
     apiKeyEnv: "MISTRAL_API_KEY",
     apiKeyLabel: "Mistral API Key",
     apiKeyUrl: "https://console.mistral.ai/api-keys",
@@ -146,7 +146,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "cohere",
     label: "Cohere",
     description: "Command R+ — RAG specialist",
-    icon: "◈",
+    icon: "",
     apiKeyEnv: "COHERE_API_KEY",
     apiKeyLabel: "Cohere API Key",
     apiKeyUrl: "https://dashboard.cohere.com/api-keys",
@@ -169,7 +169,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "xai",
     label: "xAI (Grok)",
     description: "Grok — realtime web access",
-    icon: "𝕏",
+    icon: "",
     apiKeyEnv: "XAI_API_KEY",
     apiKeyLabel: "xAI API Key",
     apiKeyUrl: "https://console.x.ai",
@@ -192,7 +192,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "openrouter",
     label: "OpenRouter",
     description: "300+ models from 50+ providers",
-    icon: "🔀",
+    icon: "",
     apiKeyEnv: "OPENROUTER_API_KEY",
     apiKeyLabel: "OpenRouter API Key",
     apiKeyUrl: "https://openrouter.ai/keys",
@@ -215,7 +215,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "deepseek",
     label: "DeepSeek",
     description: "DeepSeek — strongest reasoning model, very cheap",
-    icon: "🔍",
+    icon: "",
     apiKeyEnv: "DEEPSEEK_API_KEY",
     apiKeyLabel: "DeepSeek API Key",
     apiKeyUrl: "https://platform.deepseek.com/api_keys",
@@ -238,7 +238,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "ollama",
     label: "Ollama (Local)",
     description: "Run models OFFLINE on your own machine — FREE, private",
-    icon: "🦙",
+    icon: "",
     apiKeyEnv: "",
     apiKeyLabel: "",
     apiKeyUrl: "https://ollama.com/download",
@@ -261,7 +261,7 @@ export const PROVIDERS: ProviderDef[] = [
     id: "minimax",
     label: "Minimax AI",
     description: "Minimax — specialized in high-reasoning and logic tasks",
-    icon: "🛡",
+    icon: "",
     apiKeyEnv: "MINIMAX_API_KEY",
     apiKeyLabel: "Minimax API Key",
     apiKeyUrl: "https://platform.minimaxi.com",
@@ -284,13 +284,36 @@ export const PROVIDERS: ProviderDef[] = [
     id: "custom",
     label: "Custom (OpenAI-compatible)",
     description: "Self-hosted LLM, LM Studio, Jan, vLLM, LocalAI, or other providers",
-    icon: "⚙",
+    icon: "",
     apiKeyEnv: "CUSTOM_AI_API_KEY",
     apiKeyLabel: "API Key (leave blank if strictly local)",
     apiKeyUrl: "",
     supportsCustomModel: true,
     needsBaseUrl: true,
     models: [],
+  },
+  {
+    id: "nvidia",
+    label: "NVIDIA NIM API",
+    description: "NVIDIA — fast Inference for Llama, Nemotron & Mistral",
+    icon: "",
+    apiKeyEnv: "NVIDIA_API_KEY",
+    apiKeyLabel: "NVIDIA API Key",
+    apiKeyUrl: "https://build.nvidia.com",
+    supportsCustomModel: true,
+    needsBaseUrl: false,
+    models: [
+      {
+        id: "meta/llama-3.3-70b-instruct",
+        label: "Llama 3.3 70B",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "tool_use", "fast"],
+        recommended: true,
+      },
+    ],
   },
 ];
 
@@ -301,9 +324,9 @@ export function getProvider(id: string): ProviderDef {
 }
 
 export function createProviderInstance(config: HiruConfig): any {
-  const provider = config.provider;
-  const model = config.model;
-  let apiKey = config.apiKey;
+  const provider = config.provider?.trim();
+  const model = config.model?.trim();
+  let apiKey = config.apiKey?.trim();
 
   // Fallback to env variables if keychain returned nothing
   if (!apiKey || apiKey === "dummy") {
@@ -316,7 +339,7 @@ export function createProviderInstance(config: HiruConfig): any {
       console.warn(chalk.dim(`   Run 'hiru provider switch' to set your key correctly.\n`));
   }
 
-  const baseUrl = config.baseUrl;
+  const baseUrl = config.baseUrl?.trim();
 
   switch (provider) {
     case "anthropic":  return createAnthropic({ apiKey })(model);
@@ -338,13 +361,63 @@ export function createProviderInstance(config: HiruConfig): any {
       const safeUrl = baseUrl?.replace(/\/chat\/completions\/?$/, "") || "";
       return createOpenAI({ apiKey, baseURL: safeUrl }).chat(model);
     }
-    case "ollama":     
-      const ollama = createOllama({ baseURL: baseUrl?.replace(/\/api\/?$/, "") ?? "http://localhost:11434" });
+    case "ollama": {
+      let finalOllamaUrl = baseUrl?.replace(/\/api\/?$/, "") ?? "http://localhost:11434";
+      if (!finalOllamaUrl || finalOllamaUrl.includes("api.nvidia.com") || finalOllamaUrl.includes("api.openai.com") || finalOllamaUrl.includes("api.groq.com")) {
+         finalOllamaUrl = "http://localhost:11434";
+      }
+      const ollama = createOllama({ baseURL: finalOllamaUrl });
       return ollama(model);
+    }
     case "minimax":
       return createOpenAI({ apiKey, baseURL: baseUrl || "https://api.minimaxi.chat/v1" }).chat(model);
+    case "nvidia":
+      return createOpenAI({ apiKey, baseURL: "https://integrate.api.nvidia.com/v1" }).chat(model);
       
     default: throw new Error(`Unknown provider: ${provider}`);
+  }
+}
+
+/**
+ * Pre-flight check: verify Ollama is actually running before attempting any LLM call.
+ * Returns null if OK, or a human-readable error string if it is unreachable.
+ */
+export async function checkOllamaConnection(baseUrl?: string): Promise<string | null> {
+  let url = baseUrl?.trim() || "http://localhost:11434";
+  // Normalize: strip trailing /api if present
+  url = url.replace(/\/api\/?$/, "");
+  // Reject obviously-wrong URLs that slipped through
+  if (
+    !url ||
+    url.includes("api.nvidia.com") ||
+    url.includes("api.openai.com") ||
+    url.includes("api.groq.com")
+  ) {
+    url = "http://localhost:11434";
+  }
+
+  try {
+    // Ollama's root endpoint returns a simple 200 with "Ollama is running"
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 4000);
+    const res = await fetch(`${url}/api/tags`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) {
+      return `Ollama returned HTTP ${res.status}. Is the right version installed?`;
+    }
+    return null; // All good
+  } catch (e: any) {
+    const code = e?.cause?.code || e?.code || "";
+    const isRefused = code === "ECONNREFUSED" || e?.message?.includes("fetch failed") || e?.name === "AbortError";
+    if (isRefused) {
+      return (
+        `Cannot connect to Ollama at ${url}.\n` +
+        `  → Make sure Ollama is running: https://ollama.com/download\n` +
+        `  → Then start it with: ollama serve\n` +
+        `  → Or run a model directly: ollama run <model-name>`
+      );
+    }
+    return `Ollama connection error: ${e?.message || e}`;
   }
 }
 

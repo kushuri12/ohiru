@@ -4,6 +4,7 @@ import os from "os";
 import { HIRU_DATA_DIR } from "../utils/paths.js";
 
 export interface GlobalMemoryData {
+    identity?: string;     // The "Soul" or core persona of the agent
     facts: string[];
     preferences: Record<string, string>;
 }
@@ -47,6 +48,11 @@ export class GlobalMemory {
             this.data.facts.splice(index, 1);
             await this.save();
         }
+    }
+
+    async setIdentity(identity: string) {
+        this.data.identity = identity;
+        await this.save();
     }
 
     async setPreference(key: string, value: string) {
