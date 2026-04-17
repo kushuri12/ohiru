@@ -33,3 +33,10 @@ coverage/
 # Cache
 .npm/
 .eslintcache
+
+# Scratch and Temp
+scratch/
+scratch.cjs
+tsc_output.txt
+fixer.cjs
+
