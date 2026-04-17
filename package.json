@@ -39,7 +39,13 @@
     "grammy": "^1.30.0",
     "@nut-tree-fork/nut-js": "^4.2.0",
     "screenshot-desktop": "^1.15.0",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "axios": "^1.14.0",
+    "cheerio": "^1.2.0",
+    "node-html-markdown": "^2.0.0",
+    "ink": "^4.4.1",
+    "react": "^18.2.0",
+    "@inkjs/ui": "^1.0.0"
   },
   "devDependencies": {
     "@types/better-sqlite3": "latest",
