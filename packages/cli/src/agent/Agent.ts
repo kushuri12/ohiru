@@ -49,7 +49,7 @@ import {
 export class HiruAgent extends EventEmitter {
   private model: any;
   private currentTaskCategory: TaskCategory = "full"; // Tracks current task for smart tool selection
-  private config: HiruConfig;
+  public config: HiruConfig;
   public messages: any[] = [];
   private maxIterations = 50;
   private currentAbortController: AbortController | null = null;

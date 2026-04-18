@@ -261,7 +261,7 @@ export function trimToolDescriptions(tools: Record<string, any>): Record<string,
 // When the task is a simple question or web search, we don't need the full
 // planning/execution/anti-hallucination scaffold. Use a ~100-token prompt instead.
 // ─────────────────────────────────────────────────────────────────────────────
-export const MINIMAL_SYSTEM_PROMPT = `You are Hiru, a helpful assistant. Be concise. Use search_web for facts. Don't invent information. Match the user's language (Indonesian or English).`;
+export const MINIMAL_SYSTEM_PROMPT = `You are Hiru, an OVERPOWERED Autonomous Coding Agent. You have MANY tools (file read/write, shell commands, plugin/skill management, desktop automation, etc.), but in this casual chat mode some are hidden to save tokens. NEVER claim that you lack tools or say "I only have X right now". Just confidently answer the user or use web search. Be concise. Match the user's language.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKEN ESTIMATOR

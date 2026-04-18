@@ -166,6 +166,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         `• \`make a report then send it here\`\n\n` +
         `*Commands:*\n` +
         `/status — check status\n` +
+        `/model <provider> [model] — change AI provider\n` +
         `/stop — cancel current task\n` +
         `/clear — clear telegram history\n` +
         `/help — show this help`,
@@ -178,10 +179,57 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       await ctx.reply(
         `*Status:* ${this.isProcessing ? "⚡ Processing task..." : "✅ Ready"}\n` +
         `*Project:* \`${this.ctx.root}\`\n` +
+        `*Provider:* \`${(this.agent as any).config?.provider || "unknown"}\`\n` +
         `*Model:* \`${(this.agent as any).config?.model || "unknown"}\`\n` +
         `*Memory:* ${memMB}MB`,
         { parse_mode: "Markdown" }
       );
+    });
+
+    this.bot.command("model", async (ctx) => {
+      const args = (ctx.match || "").trim().split(" ");
+      if (!args[0]) {
+        await ctx.reply("Usage: /model <provider> [model]\nExample: /model google gemini-2.5-pro\nExample: /model anthropic claude-3-5-sonnet-latest\nExample: /model openai gpt-4o");
+        return;
+      }
+
+      const { PROVIDERS } = await import("../providers/index.js");
+      const { saveConfig } = await import("../utils/config.js");
+
+      const providerId = args[0].toLowerCase();
+      const modelName = args[1] || "";
+      
+      const providerDef = PROVIDERS.find(p => p.id === providerId);
+      if (!providerDef) {
+        await ctx.reply(`❌ Unknown provider: *${providerId}*`, { parse_mode: "Markdown" });
+        return;
+      }
+
+      const newConfig = { ...this.agent.config, provider: providerId };
+      
+      if (modelName) {
+        newConfig.model = modelName;
+      } else {
+        // Pick recommended model if not specified
+        const recommended = providerDef.models.find(m => m.recommended) || providerDef.models[0];
+        if (recommended) {
+          newConfig.model = recommended.id;
+        }
+      }
+
+      // Try searching for API key in env if it might have changed
+      if (providerDef.apiKeyEnv) {
+        const envKey = process.env[providerDef.apiKeyEnv] || process.env.HIRU_API_KEY;
+        if (envKey) newConfig.apiKey = envKey;
+      }
+
+      try {
+        this.agent.updateConfig(newConfig);
+        await saveConfig(newConfig);
+        await ctx.reply(`✅ **AI Provider Updated & Saved**\n\n• Provider: \`${providerId}\` \n• Model: \`${newConfig.model || "default"}\`\n\nChanges applied immediately and saved to \`.hirurc\`.`, { parse_mode: "Markdown" });
+      } catch (e: any) {
+        await ctx.reply(`❌ Failed to update config: ${e.message}`);
+      }
     });
 
     this.bot.command("stop", async (ctx) => {
