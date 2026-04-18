@@ -398,30 +398,61 @@ export async function ensureOllamaModel(baseUrl: string | undefined, modelName: 
       const exists = models.some((m: any) => 
         m.name === modelName || 
         m.name === `${modelName}:latest` ||
-        modelName === `${m.name}:latest`
+        modelName === `${m.name}:latest` ||
+        m.name.split(":")[0] === modelName // Match without tag
       );
       
-      if (exists) return; // Model exists, we are good
+      if (exists) return; 
     }
   } catch (e) {
-    throw new Error(`Failed to check Ollama models: ${e}`);
+    console.error("Tags check failed", e);
   }
 
   // 2. Model not found, trigger pull
   onProgress?.(`📥 Model *${modelName}* not found. Pulling from Ollama registry...`);
   
   try {
-    const res = await fetch(`${url}/api/pull`, {
+    const response = await fetch(`${url}/api/pull`, {
       method: "POST",
-      body: JSON.stringify({ name: modelName, stream: false }), // We'll do non-streaming for simplicity in this bridge
+      body: JSON.stringify({ name: modelName, stream: true }),
     });
 
-    if (!res.ok) {
-      const errData = await res.json().catch(() => ({}));
-      throw new Error(errData.error || `Pull failed with status ${res.status}`);
+    if (!response.ok) {
+      const err = await response.json().catch(() => ({}));
+      throw new Error(err.error || `Ollama API error: ${response.status}`);
+    }
+
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Response body is null");
+
+    let lastReportedPercent = -10;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = new TextDecoder().decode(value);
+      const lines = chunk.split("\n").filter(Boolean);
+
+      for (const line of lines) {
+        try {
+          const json = JSON.parse(line);
+          if (json.status === "downloading" && json.total) {
+            const percent = Math.floor((json.completed / json.total) * 100);
+            if (percent >= lastReportedPercent + 20) { // Report every 20% to avoid spamming Telegram
+              onProgress?.(`📥 Pulling *${modelName}*: ${percent}%`);
+              lastReportedPercent = percent;
+            }
+          } else if (json.status && json.status !== "downloading") {
+            // Log other statuses to console for debug
+            console.log(`[Ollama Pull] ${json.status}`);
+          }
+        } catch (e) {
+          // Ignore partial JSON
+        }
+      }
     }
     
-    onProgress?.(`✅ Model *${modelName}* pulled successfully.`);
+    onProgress?.(`✅ Model *${modelName}* pulled and ready.`);
   } catch (e: any) {
     throw new Error(`Failed to pull model "${modelName}": ${e.message}`);
   }

@@ -225,13 +225,16 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
 
       try {
         if (providerId === "ollama") {
-          await ctx.reply(`⚙️ Checking Ollama model *${newConfig.model}*...`, { parse_mode: "Markdown" });
+          const statusMsg = await ctx.reply(`⚙️ Checking Ollama model *${newConfig.model}*...`, { parse_mode: "Markdown" });
           const { ensureOllamaModel } = await import("../providers/index.js");
-          await ensureOllamaModel(newConfig.baseUrl, newConfig.model, async (msg) => {
-            await ctx.reply(msg, { parse_mode: "Markdown" });
-          }).catch(err => {
-             console.error(`[Ollama Pull Error] ${err.message}`);
-          });
+          
+          try {
+            await ensureOllamaModel(newConfig.baseUrl, newConfig.model, async (msg) => {
+              await ctx.reply(msg, { parse_mode: "Markdown" }).catch(() => {});
+            });
+          } catch (pullError: any) {
+            await ctx.reply(`⚠️ **Ollama Warning**: ${pullError.message}\n\nI will try to continue, but the model might not be available locally.`, { parse_mode: "Markdown" });
+          }
         }
 
         this.agent.updateConfig(newConfig);
