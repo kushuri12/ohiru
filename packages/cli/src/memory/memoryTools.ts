@@ -14,7 +14,7 @@ You can:
 
 You MUST use this anytime the user shares personal details, preferences, or important global rules they want you to remember across all projects forever.`,
             parameters: z.object({
-                action: z.enum(["add_fact", "remove_fact", "set_pref", "remove_pref", "list", "set_identity"]),
+                action: z.enum(["add_fact", "remove_fact", "set_pref", "remove_pref", "list", "set_identity", "get_all", "show"]),
                 fact: z.string().optional().describe("Fact text to store (for add_fact)"),
                 index: z.number().optional().describe("Index of fact to remove (for remove_fact)"),
                 key: z.string().optional().describe("Preference key (for set/remove_pref)"),
