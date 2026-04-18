@@ -18,7 +18,7 @@ import { runTelegramSetup } from "./telegram/TelegramSetup.js";
 import { ensureHiruDirs } from "./utils/paths.js";
 import { setupWindowsTerminal } from "./utils/platform.js";
 
-export const version_cli = "0.2.8";
+export const version_cli = "0.2.9";
 
 async function main() {
   await ensureHiruDirs();

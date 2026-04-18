@@ -143,7 +143,10 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
 
   private setupGuard() {
     this.bot.use(async (ctx, next) => {
-      if (String(ctx.chat?.id) !== this.config.allowedChatId) {
+      const cid = String(ctx.chat?.id || ctx.from?.id || "");
+      console.log(`[Telegram] Incoming ${ctx.update.update_id} from ${cid}`);
+      if (cid !== this.config.allowedChatId) {
+        console.warn(`[Telegram] Blocked access from ${cid} (Expected ${this.config.allowedChatId})`);
         await ctx.reply("⛔ Access denied.");
         return;
       }
@@ -365,8 +368,8 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const text = ctx.message.text.toLowerCase().trim();
 
       if (this.pendingPlanResolve || this.pendingPermResolve) {
-        const isYes = ["ya", "y", "yes", "ok", "continue", "sip", "yup", "gas", "✅ yes, continue"].includes(text);
-        const isNo = ["tidak", "n", "no", "cancel", "stop", "❌ cancel"].includes(text);
+        const isYes = ["ya", "y", "yes", "ok", "continue", "sip", "yup", "gas", "boleh", "✅ yes, continue"].some(v => text.includes(v)) || text === "y" || text === "ya";
+        const isNo = ["tidak", "n", "no", "cancel", "stop", "❌ cancel", "gak"].some(v => text.includes(v)) || text === "n" || text === "no";
 
         if (isYes || isNo) {
           if (this.pendingPlanResolve) {
@@ -547,6 +550,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     });
 
     this.bot.callbackQuery("plan_approve", async (ctx) => {
+      console.log("[Telegram] Button: plan_approve");
       try { await ctx.answerCallbackQuery("✅ Approved!"); } catch (e) {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
       if (this.pendingPlanResolve) {
@@ -562,14 +566,22 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     });
 
     this.bot.callbackQuery("plan_reject", async (ctx) => {
+      console.log("[Telegram] Button: plan_reject");
       try { await ctx.answerCallbackQuery("❌ Cancelled."); } catch (e) {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
-      this.agent.resolvePlanApproval(false);
+      if (this.pendingPlanResolve) {
+        const resolve = this.pendingPlanResolve;
+        this.pendingPlanResolve = null;
+        resolve(false);
+      } else {
+        this.agent.resolvePlanApproval(false);
+      }
       this.isProcessing = false;
     });
 
     this.bot.callbackQuery(/^perm_approve:(.+)$/, async (ctx) => {
       const toolName = ctx.match[1];
+      console.log(`[Telegram] Button: perm_approve ${toolName}`);
       try { await ctx.answerCallbackQuery(`✅ Executing ${toolName}`); } catch {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
       const resolve = this.pendingPermResolve;
@@ -581,6 +593,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
 
     this.bot.callbackQuery(/^perm_reject:(.+)$/, async (ctx) => {
       const toolName = ctx.match[1];
+      console.log(`[Telegram] Button: perm_reject ${toolName}`);
       try { await ctx.answerCallbackQuery(`❌ Rejected ${toolName}`); } catch {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
       const resolve = this.pendingPermResolve;
