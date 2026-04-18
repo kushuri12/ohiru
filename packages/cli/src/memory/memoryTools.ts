@@ -43,9 +43,11 @@ You MUST use this anytime the user shares personal details, preferences, or impo
                         await memory.deletePreference(args.key);
                         return `✅ Preference removed: ${args.key}`;
                     case "list":
-                        return memory.formatForPrompt();
+                    case "get_all":
+                    case "show":
+                        return JSON.stringify(memory.getData(), null, 2);
                     default:
-                        return "Error: Unknown action.";
+                        return `Error: Unknown action "${args.action}". You MUST use one of: add_fact, remove_fact, set_pref, remove_pref, list, set_identity.`;
                 }
             }
         }
