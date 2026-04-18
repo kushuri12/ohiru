@@ -8,7 +8,7 @@ import { SkillManager, SkillFile } from "./SkillManager.js";
  * Creates the skill management tool that the AI uses to create/test/fix skills.
  * Returns a set of tools to be merged into internalTools.
  */
-export function createSkillTools(skillManager: SkillManager) {
+export function createSkillTools(skillManager: SkillManager, libraryManager?: SkillManager) {
   return {
     manage_skills: {
       description: `Manage Hiru's learnable skills. Actions: list, create, test, fix, delete, add_file, list_files.
@@ -21,6 +21,7 @@ CREATING SKILLS — QUALITY RULES:
 5. Return RICH formatted output with all relevant data
 6. Always add relevant "tags" (comma-separated)
 7. TEST with REALISTIC args (real city names, real values) not empty objects
+8. Library skills are read-only; you can only create/edit/delete skills in your own skill directory.
 
 MULTI-FILE SKILL SUPPORT:
 - Skills live in a folder (e.g. ~/.hiru/skills/buat_document/)
@@ -57,19 +58,30 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
 
         switch (action) {
           case "list": {
-            const skills = skillManager.listSkills();
-            if (skills.length === 0) {
+            const userSkills = skillManager.listSkills();
+            const libSkills = libraryManager ? libraryManager.listSkills() : [];
+            const total = userSkills.length + libSkills.length;
+
+            if (total === 0) {
               return "No skills installed yet. You can create one with action: 'create'.";
             }
-            const list = skills.map(s => {
-              const status = s.testResult
-                ? (s.testResult.success ? "✅ tested" : "❌ failing")
-                : "⚠️ untested";
-              const lang = s.main ? ` [${s.main}]` : " [.mjs]";
-              const fileCount = s.files ? ` (${s.files.length} files)` : "";
-              return `• ${s.name}${lang}${fileCount} — ${s.description} [${status}] (v${s.version})`;
-            }).join("\n");
-            return `Installed skills (${skills.length}):\n${list}`;
+
+            const formatList = (skills: any[], label: string) => {
+              if (skills.length === 0) return "";
+              const list = skills.map(s => {
+                const status = s.testResult
+                  ? (s.testResult.success ? "✅ tested" : "❌ failing")
+                  : "⚠️ untested";
+                const lang = s.main ? ` [${s.main}]` : " [.mjs]";
+                const fileCount = s.files ? ` (${s.files.length} files)` : "";
+                return `  • ${s.name}${lang}${fileCount} — ${s.description} [${status}] (v${s.version})`;
+              }).join("\n");
+              return `\n${label}:\n${list}`;
+            };
+
+            return `Installed skills (${total}):` + 
+                   formatList(userSkills, "User Skills") + 
+                   formatList(libSkills, "Built-in Library");
           }
 
           case "create": {
@@ -136,7 +148,10 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
 
           case "read": {
             if (!name) return "Error: 'read' requires a skill name.";
-            const readResult = await skillManager.readSkillFiles(name);
+            let readResult = await skillManager.readSkillFiles(name);
+            if ("error" in readResult && libraryManager) {
+              readResult = await libraryManager.readSkillFiles(name);
+            }
             if ("error" in readResult) return `❌ ${readResult.error}`;
             return readResult.content;
           }
@@ -153,16 +168,27 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
               }
             }
 
-            const result = await skillManager.testSkill(name, parsedTestArgs);
+            let result = await skillManager.testSkill(name, parsedTestArgs);
+            if (!result.success && libraryManager) {
+               // Try library if it failed in user manager (or wasn't found)
+               const libResult = await libraryManager.testSkill(name, parsedTestArgs);
+               if (libResult.success || !libResult.output.includes("not found")) {
+                 result = libResult;
+               }
+            }
+
             if (result.success) {
               return `✅ Skill "${name}" test PASSED!\nOutput: ${result.output}`;
             } else {
-              return `❌ Skill "${name}" test FAILED!\nError: ${result.output}\n\nFix it with action: "fix", name: "${name}", code: "<fixed code>"`;
+              return `❌ Skill "${name}" test FAILED!\nError: ${result.output}`;
             }
           }
 
           case "fix": {
             if (!name || !code) return "Error: 'fix' requires name and new code.";
+            if (libraryManager && (await libraryManager.listSkillFiles(name) as any).files) {
+              return `❌ Skill "${name}" belongs to the built-in library and is READ-ONLY. To customize it, create a new skill with a different name.`;
+            }
             const fixResult = await skillManager.updateSkillCode(name, code);
             if (!fixResult.success) return `❌ Failed to update "${name}": ${fixResult.error}`;
             // Auto-test after fix
@@ -204,6 +230,9 @@ WORKFLOW: create → test (with real args) → fix if error → test again → u
 
           case "delete": {
             if (!name) return "Error: 'delete' requires a skill name.";
+            if (libraryManager && (await libraryManager.listSkillFiles(name) as any).files) {
+              return `❌ Skill "${name}" belongs to the built-in library and cannot be deleted.`;
+            }
             await skillManager.deleteSkill(name);
             return `🗑️ Skill "${name}" deleted.`;
           }

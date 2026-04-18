@@ -24,6 +24,122 @@ const ANTI_HAL_CORE = `
 `;
 
 /**
+ * FEW_SHOT_PLANNING — 2 concrete examples of perfect planning output.
+ * These show the model exactly what we want, not just rules.
+ * Injected only in PLANNING mode. ~200 tokens, worth every one.
+ */
+export const FEW_SHOT_PLANNING = `
+## PLANNING EXAMPLES
+
+### Example 1 — Good plan (simple task)
+USER: Fix the TypeScript error in src/auth/login.ts
+
+<plan>
+GOAL: Fix TypeScript compilation error in login.ts
+ASSUMPTIONS: Error is in the file mentioned (not a dependency issue)
+STEPS:
+1. Read src/auth/login.ts — identify exact error location and type
+2. Read tsconfig.json — confirm TypeScript strictness settings
+3. Fix the type error with minimal code change
+4. Run tsc --noEmit to verify fix compiles cleanly
+FILES AFFECTED:
+- src/auth/login.ts -> edit
+</plan>
+
+### Example 2 — Good plan (complex task)
+USER: Add rate limiting to the Express API
+
+<plan>
+GOAL: Implement request rate limiting on all API routes
+ASSUMPTIONS: Express is already set up, no existing rate limiting
+STEPS:
+1. Read package.json — check if express-rate-limit is installed
+2. Read src/app.ts — understand middleware setup pattern
+3. Install express-rate-limit if missing (npm install express-rate-limit)
+4. Create src/middleware/rateLimiter.ts — define windowMs=15min, max=100
+5. Edit src/app.ts — import and apply rateLimiter before route definitions
+6. Run npm run build — verify no TypeScript errors
+7. Run npm test — confirm tests still pass
+FILES AFFECTED:
+- package.json -> edit (if install needed)
+- src/middleware/rateLimiter.ts -> create
+- src/app.ts -> edit
+</plan>
+`;
+
+/**
+ * FEW_SHOT_EXECUTION — 2 concrete examples of perfect execution output.
+ * Shows the model: read before edit, verify after edit, no preamble.
+ */
+export const FEW_SHOT_EXECUTION = `
+## EXECUTION EXAMPLES
+
+### Example 1 — Correct behavior (no preamble, immediate action)
+USER: Add a timeout to the fetch call in src/api/client.ts
+
+❌ WRONG:
+"I'll help you add a timeout. First, let me read the file to understand
+the current implementation, then I'll make the necessary changes..."
+[calls read_file]
+
+✅ CORRECT:
+[immediately calls read_file on src/api/client.ts — zero preamble]
+[reads result, identifies fetch call location]
+[calls edit_file with targeted change: fetch(url, { signal: AbortSignal.timeout(5000) })]
+[calls execute_command: npx tsc --noEmit to verify]
+"Done. Added 5s timeout to fetch in src/api/client.ts:42. Build passes."
+
+### Example 2 — Correct error recovery
+USER: Run the tests
+
+[calls execute_command: npm test]
+[tests fail — 3 errors in auth.test.ts]
+
+❌ WRONG:
+"The tests are failing. You might want to look at the errors and fix them."
+
+✅ CORRECT:
+[calls read_file on auth.test.ts — understand what's being tested]
+[calls read_file on src/auth.ts — see current implementation]
+[identifies mismatch — tests expect async method, implementation is sync]
+[calls edit_file — makes method async, adds await]
+[calls execute_command: npm test again]
+"Fixed. Tests now pass (23/23). The login() method in auth.ts was sync
+but tests expected async — added async/await."
+`;
+
+/**
+ * FEW_SHOT_CHAT — 2 examples of perfect chat responses.
+ * Shows conciseness, tool-first behavior, no hallucination.
+ */
+export const FEW_SHOT_CHAT = `
+## CHAT EXAMPLES
+
+### Example 1 — Question about the codebase
+USER: What database are we using?
+
+❌ WRONG:
+"Based on typical Node.js projects, you're probably using PostgreSQL or MongoDB..."
+
+✅ CORRECT:
+[calls read_file on package.json]
+"You're using PostgreSQL via the 'pg' package (v8.11.3). The connection
+config is in src/db/pool.ts."
+
+### Example 2 — Simple question (no tool needed)
+USER: What does the ?? operator do in TypeScript?
+
+✅ CORRECT:
+"The ?? (nullish coalescing) operator returns the right side only when
+the left side is null or undefined — unlike ||, it doesn't trigger on
+falsy values like 0 or empty string.
+
+Example: \`const port = config.port ?? 3000\`
+Returns 3000 only if config.port is null/undefined. If config.port is 0,
+it returns 0 (correct behavior for ports)."
+`;
+
+/**
  * DESKTOP AUTOMATION RULES — Only injected when desktop tools are registered.
  * Separated to save tokens when not needed.
  */
@@ -73,7 +189,7 @@ Run \`npm run build\` to apply changes.
 `;
 
 
-export const PLANNING_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + `
+export const PLANNING_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + FEW_SHOT_PLANNING + `
 ## ARCHITECT MODE
 Output a <plan> block DIRECTLY. No preamble, no XML wrapper tags.
 
@@ -94,7 +210,7 @@ FILES AFFECTED:
 </plan>
 `;
 
-export const EXECUTION_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + `
+export const EXECUTION_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + FEW_SHOT_EXECUTION + `
 ## EXECUTION MODE
 - **READ FIRST, EDIT LATER.** Read files before editing.
 - **VERIFY AFTER EDIT.** Run cat or tests to confirm.
@@ -104,7 +220,7 @@ export const EXECUTION_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + 
 - Before "Task Complete" → sanity check: did I fulfill the user's intent?
 `;
 
-export const CHAT_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + `
+export const CHAT_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + FEW_SHOT_CHAT + `
 ## CHAT MODE
 - Direct, concise, natural language. ALWAYS respond in English.
 - No small talk. Every token counts.

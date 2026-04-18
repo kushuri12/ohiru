@@ -15,6 +15,12 @@
   "include": [],
   "references": [
     { "path": "./shared" },
-    { "path": "./packages/cli" }
+    { "path": "./packages/cli" },
+    { "path": "./packages/gateway" },
+    { "path": "./packages/voice" },
+    { "path": "./packages/agents" },
+    { "path": "./packages/canvas" },
+    { "path": "./packages/dashboard" },
+    { "path": "./packages/channels" }
   ]
 }

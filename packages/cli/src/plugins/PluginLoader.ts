@@ -1,7 +1,7 @@
 // src/plugins/PluginLoader.ts
 // Multi-format plugin loader — detects and normalizes Claude Code, OpenClaw, and generic plugins
 
-import fs from "fs/promises";
+import fs from "fs-extra";
 import path from "path";
 import {
   PluginManifest,

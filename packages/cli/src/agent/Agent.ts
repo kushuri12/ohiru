@@ -12,6 +12,11 @@ import { CheckpointManager } from "../memory/guard/CheckpointManager.js";
 import { LoopDetector } from "../memory/guard/LoopDetector.js";
 import { ToolSandbox } from "../memory/guard/ToolSandbox.js";
 import chalk from "chalk";
+import { c, ORANGE } from "../ui/theme.js";
+
+import ora from "ora";
+import os from "os";
+import { fileURLToPath } from "url";
 import { 
   ThinkingController, 
   ThinkingMode, 
@@ -25,7 +30,7 @@ import {
   EXECUTION_SYSTEM_PROMPT, 
   CHAT_SYSTEM_PROMPT 
 } from "./prompts.js";
-import { buildSystemPrompt, buildSystemPromptParts, PromptPart, ContextBuilderOptions } from "./ContextBuilder.js";
+import { buildSystemPrompt, buildSystemPromptParts, ContextBuilder, PromptPart, ContextBuilderOptions } from "./ContextBuilder.js";
 import { TodoTracker, TodoItem } from "./TodoTracker.js";
 import { SkillManager, createSkillTools } from "../skills/index.js";
 import { GlobalMemory, createMemoryTools } from "../memory/index.js";
@@ -45,6 +50,14 @@ import {
   MINIMAL_SYSTEM_PROMPT,
   TaskCategory,
 } from "./SmartContext.js";
+import { HeartbeatManager } from "./Heartbeat.js";
+import { GlobalIntelligence } from "./GlobalIntelligence.js";
+import { SkillVersionManager } from "../skills/SkillVersionManager.js";
+import { TokenBudget } from "./TokenBudget.js";
+import { HiruMDRouter } from "../memory/HiruMDRouter.js";
+import { ToolResultCache } from "../tools/ToolResultCache.js";
+import { ConfidenceChecker } from "./ConfidenceChecker.js";
+import { ErrorPatternLibrary } from "../tools/ErrorHandler.js";
 
 export class HiruAgent extends EventEmitter {
   private model: any;
@@ -73,6 +86,7 @@ export class HiruAgent extends EventEmitter {
   private thinkingController: ThinkingController;
   private todoTracker: TodoTracker;
   public skillManager: SkillManager;
+  private libraryManager: SkillManager | null = null;
   public pluginManager: PluginManager;
   private globalMemory: GlobalMemory;
   private skillsReady = false;
@@ -91,6 +105,16 @@ export class HiruAgent extends EventEmitter {
   private readyPromise: Promise<void>;
   private tools: Record<string, any> = {}; 
 
+  private heartbeat: HeartbeatManager | null = null;
+  private intelligence: GlobalIntelligence | null = null;
+  
+  // Intelligence Upgrades v2
+  private tokenBudget: TokenBudget;
+  private memoryRouter: HiruMDRouter;
+  private resultCache: ToolResultCache;
+  private confidenceChecker: ConfidenceChecker;
+  private errorLibrary: ErrorPatternLibrary;
+
   public async waitReady() {
     return this.readyPromise;
   }
@@ -107,9 +131,18 @@ export class HiruAgent extends EventEmitter {
     this.skillManager = new SkillManager();
     this.pluginManager = new PluginManager();
     this.globalMemory = new GlobalMemory();
-    this.compactor = new Compactor(this.model);
     this.noOpHandler = new NoOpHandler();
     this.planEnforcer = new PlanEnforcer();
+    
+    // Intelligence Upgrades v2
+    this.tokenBudget = new TokenBudget(config.model);
+    this.memoryRouter = new HiruMDRouter(path.join(os.homedir(), ".hiru", "HIRU.md"));
+    this.resultCache = new ToolResultCache(30000);
+    this.confidenceChecker = new ConfidenceChecker();
+    this.errorLibrary = new ErrorPatternLibrary();
+    
+    // Proactive Intelligence
+    this.intelligence = new GlobalIntelligence(this, {} as any); // Context updated in waitReady
 
     // Init async stuff
     this.readyPromise = (async () => {
@@ -129,15 +162,31 @@ export class HiruAgent extends EventEmitter {
         const memoryTools = createMemoryTools(this.globalMemory);
         Object.assign(this.tools, memoryTools);
 
-        // 2. Register skill management tool + learned skill tools
-        const skillTools = createSkillTools(this.skillManager);
-        Object.assign(this.tools, skillTools);
-        Object.assign(this.tools, this.skillManager.getToolDefinitions());
-
-        // 3. Register plugin management tool + plugin-provided tools
+        // 2. Register plugin management tool + plugin-provided tools
         const pluginTools = createPluginTools(this.pluginManager);
         Object.assign(this.tools, pluginTools);
         Object.assign(this.tools, this.pluginManager.getToolDefinitions());
+
+        // 3.5. Load Built-in Skills from Library (The "Hundreds of Files" update)
+        const __filename = fileURLToPath(import.meta.url);
+        const __dirname = path.dirname(__filename);
+        const libraryDir = path.resolve(__dirname, "..", "skills", "library");
+        
+        if (fs.existsSync(libraryDir)) {
+           const versionManager = new SkillVersionManager(libraryDir);
+           await versionManager.pruneOldVersions(false); // Auto-clean old versions
+           
+           this.libraryManager = new SkillManager(libraryDir);
+           await this.libraryManager.init(); // This now uses versioning inside
+           
+           Object.assign(this.tools, this.libraryManager.getToolDefinitions());
+           console.log(`  ${c.green("⚡")}  ${c.muted("Library loaded  ")}${chalk.white(this.libraryManager.listSkills().length + " high-tier skills")}`);
+        }
+
+        // 3.6. Finalize Skill Tools with Library Awareness
+        const skillTools = createSkillTools(this.skillManager, this.libraryManager || undefined);
+        Object.assign(this.tools, skillTools);
+        Object.assign(this.tools, this.skillManager.getToolDefinitions());
 
         // 4. RECURSIVE AGENT TOOL (Premium Design)
         const hiruSubagentTool = createAgentTool(
@@ -195,7 +244,7 @@ export class HiruAgent extends EventEmitter {
           }
         }
       } catch (e: any) {
-        console.error(chalk.yellow(`  ⚠️  Systems init failed: ${e.message}`));
+        console.error(`  ${c.red("✗")}  ${c.muted("System init     ")}${chalk.red(e.message)}`);
       }
     })();
 
@@ -321,7 +370,20 @@ export class HiruAgent extends EventEmitter {
               if (!allowed) return "User denied permission to run this tool.";
             }
           }
-          return t.execute(args);
+
+          // Check Cache
+          const cached = this.resultCache.get(name, args);
+          if (cached) {
+            console.log(`  ${c.glow("●")}  ${c.muted("Memory recall   ")}${c.light(name)}`);
+            return cached;
+          }
+
+          const result = await t.execute(args);
+          
+          // Store in cache
+          this.resultCache.set(name, args, result);
+          
+          return result;
         }
       };
     }
@@ -344,7 +406,7 @@ export class HiruAgent extends EventEmitter {
   /**
    * Helper to get system prompt with cache control hints
    */
-  private getSystemPrompt(ctx: ProjectContext, wrapper?: (p: string) => string): any {
+  private async getSystemPrompt(ctx: ProjectContext, wrapper?: (p: string) => string): Promise<any> {
     // Modular Soul Injection (OpenClaw style)
     const modularSoul: any = {};
     try {
@@ -365,8 +427,22 @@ export class HiruAgent extends EventEmitter {
       isTelegram: !!(this.config as any).telegramMode,
     };
 
-    const parts = buildSystemPromptParts(ctx, this.globalMemory, this.skillManager, this.activeSnapshot, modularSoul, this.pluginManager, contextOptions);
+    // Combined skills for prompt
+    const skillListProvider = {
+      listSkills: () => [
+        ...this.skillManager.listSkills(),
+        ...(this.libraryManager ? this.libraryManager.listSkills() : [])
+      ]
+    };
+
+    const parts = buildSystemPromptParts(ctx, this.globalMemory, skillListProvider, this.activeSnapshot, modularSoul, this.pluginManager, contextOptions);
     
+    // Intelligence Upgrades v2: Append routed memory
+    const memoryContext = await this.memoryRouter.getRelevantContext(this.currentTaskCategory);
+    if (memoryContext) {
+      parts.push({ text: memoryContext, cacheControl: { type: "ephemeral" } });
+    }
+
     // If we have a wrapper (like PLANNING_SYSTEM_PROMPT), we must apply it.
     // However, some providers prefer arrays for caching.
     const isAnthropic = this.config.provider === "anthropic";
@@ -387,6 +463,26 @@ export class HiruAgent extends EventEmitter {
     // Default to string for others
     const fullPrompt = parts.map(p => p.text).join("\n");
     return wrapper ? wrapper(fullPrompt) : fullPrompt;
+  }
+  
+  /**
+   * Semi-minimal system prompt for chat — keeps core identity and skills
+   * but removes all the planning/execution/rules scaffold.
+   * Saves ~80% tokens vs full prompt.
+   */
+  private async getMinimalSystemPrompt(ctx: ProjectContext): Promise<string> {
+    const skillListProvider = {
+      listSkills: () => [
+        ...this.skillManager.listSkills(),
+        ...(this.libraryManager ? this.libraryManager.listSkills() : [])
+      ]
+    };
+    
+    return new ContextBuilder(ctx, this.globalMemory, skillListProvider)
+      .addCoreInstructions()
+      .addCapabilities()
+      .addStandardHeader()
+      .build();
   }
 
   updateConfig(config: HiruConfig) {
@@ -672,6 +768,21 @@ export class HiruAgent extends EventEmitter {
       // Classify task BEFORE any LLM call — determines tool selection for entire turn
       this.currentTaskCategory = typeof input === "string" ? classifyTask(input) : "full";
 
+      // PRE-FLIGHT TOKEN BUDGET CHECK
+      const systemPrompt = this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT);
+      const budget = this.tokenBudget.check(
+        typeof systemPrompt === "string" ? systemPrompt : JSON.stringify(systemPrompt),
+        this.getSmartTools({ isReadonly: true }),
+        this.messages
+      );
+      
+      this.emit("status", this.tokenBudget.formatStatus(budget));
+      
+      if (budget.action === "compress" || budget.action === "hard_limit") {
+        this.emit("status", "⚡ Context budget exceeded. Compacting memory...");
+        await this.compactor.compact(this.messages);
+      }
+
       // Minimalist greeting filter - Only for extremely short greetings to keep response time low.
       // For everything else, let the LLM's brain decide (Planning Phase).
       const inputStr = typeof input === "string" ? input.trim() : "";
@@ -713,8 +824,8 @@ export class HiruAgent extends EventEmitter {
          const chatResult = await streamText({
             model: this.model,
             system: useMinimalPrompt
-              ? MINIMAL_SYSTEM_PROMPT  // ~30 tokens vs ~1500 tokens — 98% savings on system prompt!
-              : this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT),
+              ? (await this.getMinimalSystemPrompt(ctx))
+              : (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT)),
             messages: coreMessages,
             tools: this.getSmartTools({ isReadonly: true }), // Smart tool selection
             abortSignal: this.createAbortSignal(30000),
@@ -856,7 +967,7 @@ export class HiruAgent extends EventEmitter {
     const result = await streamText({
       model: this.model,
       messages: coreMessages,
-      system: this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT),
+      system: await this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT),
       tools: this.getSmartTools({ isReadonly: true }), // Smart selection — saves 3000-5000 tokens on tools
       abortSignal: this.createAbortSignal(PLANNING_TIMEOUT),
       maxRetries: 5,
@@ -1090,9 +1201,18 @@ export class HiruAgent extends EventEmitter {
     }
 
     const EXECUTION_TIMEOUT = this.config.executionTimeoutMs ?? 10 * 60 * 1000;
+    // PRE-EXECUTION TOKEN BUDGET CHECK
+    const systemPrompt = await this.getSystemPrompt(ctx, EXECUTION_SYSTEM_PROMPT);
+    const budget = this.tokenBudget.check(
+      typeof systemPrompt === "string" ? systemPrompt : JSON.stringify(systemPrompt),
+      this.getSmartTools(),
+      this.messages
+    );
+    this.emit("status", this.tokenBudget.formatStatus(budget));
+
     const result = streamText({
       model: this.model,
-      system: this.getSystemPrompt(ctx, EXECUTION_SYSTEM_PROMPT),
+      system: systemPrompt,
       messages: this.adaptMessages(this.messages),
       tools: this.getSmartTools(), // Smart selection — only relevant tools for this task
       stopWhen: stepCountIs(this.maxIterations),
@@ -1349,7 +1469,7 @@ export class HiruAgent extends EventEmitter {
     try {
       const result = streamText({
         model: this.model, 
-        system: this.getSystemPrompt(ctx, isSummary ? 
+        system: await this.getSystemPrompt(ctx, isSummary ? 
           (p) => p + "\n## MANDATORY: PROVIDE A COMPLETE SUMMARY OF THE PREVIOUS TOOL RESULTS" : 
           (p) => p + "\n## MANDATORY: USE TOOLS NOW"
         ), 
@@ -1362,6 +1482,20 @@ export class HiruAgent extends EventEmitter {
           if (ev.usage) {
             this.tokenUsage.prompt += ev.usage.promptTokens || 0;
             this.tokenUsage.completion += ev.usage.completionTokens || 0;
+          }
+
+          // Intelligence Upgrade v2: Pattern Library detection
+          if (ev.toolResults) {
+            for (const res of (ev.toolResults as any[])) {
+              if (res.result?.error || res.isError) {
+                const errorText = res.result?.error || res.result || "Unknown error";
+                const pattern = this.errorLibrary.match(res.toolName, errorText);
+                if (pattern) {
+                  this.emit("status", this.errorLibrary.formatHint(pattern));
+                }
+                this.errorLibrary.recordError(res.toolName, res.args, errorText, false);
+              }
+            }
           }
         },
       });
@@ -1411,7 +1545,7 @@ export class HiruAgent extends EventEmitter {
     let planBuffer = "";
     const result = await streamText({
       model: this.model, 
-      system: this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT), 
+      system: await this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT), 
       messages: this.adaptMessages(this.messages),
       abortSignal: this.createAbortSignal(this.config.planningTimeoutMs ?? 180000),
     });
@@ -1444,7 +1578,7 @@ export class HiruAgent extends EventEmitter {
       iterations++;
       const response = await generateText({
         model: this.model,
-        system: this.getSystemPrompt(ctx),
+        system: await this.getSystemPrompt(ctx),
         messages: this.adaptMessages(this.messages),
         tools: this.getTools(),
       });

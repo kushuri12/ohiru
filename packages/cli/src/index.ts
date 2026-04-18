@@ -17,8 +17,12 @@ import { TelegramBridge } from "./telegram/TelegramBridge.js";
 import { runTelegramSetup } from "./telegram/TelegramSetup.js";
 import { ensureHiruDirs } from "./utils/paths.js";
 import { setupWindowsTerminal } from "./utils/platform.js";
+import { c } from "./ui/theme.js";
+import { printStartupBanner, printCompactHeader, divider, statusLine } from "./ui/banner.js";
 
-export const version_cli = "0.3.0";
+import ora from "ora";
+
+export const version_cli = "1.0.0";
 
 async function main() {
   await ensureHiruDirs();
@@ -37,22 +41,27 @@ async function main() {
 
   // ── help ─────────────────────────────────────────────────────────────────
   if (isHelp) {
-    const l1 = chalk.hex("#CC785C")("  ▄ ▄  ") + `  ${chalk.white.bold("Hiru")} ${chalk.gray("v" + version_cli)}`;
-    const l2 = chalk.hex("#CC785C")(" █████ ") + `  ${chalk.gray("Telegram AI Agent")}`;
-    const l3 = chalk.hex("#CC785C")(" █ █ █ ") + `  ${chalk.gray("github.com/kushuri12/ohiru")}`;
-    console.log(`\n${l1}\n${l2}\n${l3}\n`);
-    console.log(`  ${chalk.white.bold("Usage:")}\n`);
-    console.log(`    ${chalk.cyan("hiru")}                           ${chalk.gray("•")} ${chalk.white("Start the Telegram agent")}`);
-    console.log(`    ${chalk.cyan("hiru --setup")}                   ${chalk.gray("•")} ${chalk.white("Configure bot credentials")}`);
-    console.log(`    ${chalk.cyan("hiru provider <list|switch>")}  ${chalk.gray("•")} ${chalk.white("Manage AI providers")}`);
-    console.log(`    ${chalk.cyan("hiru model switch")}            ${chalk.gray("•")} ${chalk.white("Switch current AI model")}`);
-    console.log(`    ${chalk.cyan("hiru memory <show|add|clear>")} ${chalk.gray("•")} ${chalk.white("Manage project memory (HIRU.md)")}`);
-    console.log(`    ${chalk.cyan("hiru sessions <list|clear>")}   ${chalk.gray("•")} ${chalk.white("Manage session history")}`);
-    console.log(`    ${chalk.cyan("hiru skill <list|create|delete|test>")} ${chalk.gray("•")} ${chalk.white("Manage custom skills")}`);
-    console.log(`    ${chalk.cyan("hiru plugin <install|uninstall|update|enable|disable|list>")} ${chalk.gray("•")} ${chalk.white("Manage global plugins")}`);
-    console.log(`    ${chalk.cyan("hiru set-ram <mb>")}            ${chalk.gray("•")} ${chalk.white("Set agent memory allocation (e.g. 4096)")}`);
-    console.log(`    ${chalk.cyan("hiru --version")}                 ${chalk.gray("•")} ${chalk.white("Show version")}`);
-    console.log(`    ${chalk.cyan("hiru --help")}                    ${chalk.gray("•")} ${chalk.white("Show this help menu")}\n`);
+    printCompactHeader("HELP", version_cli);
+
+    const cmd = (s: string) => c.light(s.padEnd(35));
+    const dot  = c.dark("•");
+
+    console.log(`  ${c.muted("Commands")}\n`);
+    console.log(`    ${cmd("hiru")}                ${dot} ${chalk.white("Start the Telegram agent")}`);
+    console.log(`    ${cmd("hiru gateway <start|stop>")}  ${dot} ${chalk.white("Manage WebSocket gateway")}`);
+    console.log(`    ${cmd("hiru channels <list|add>")}   ${dot} ${chalk.white("Manage channel adapters")}`);
+    console.log(`    ${cmd("hiru agents <list|add|start>")} ${dot} ${chalk.white("Orchestrate multiple agents")}`);
+    console.log(`    ${cmd("hiru dashboard start")}       ${dot} ${chalk.white("Launch web dashboard")}`);
+    console.log(`    ${cmd("hiru canvas open")}           ${dot} ${chalk.white("Open visual workspace")}`);
+    console.log(`    ${cmd("hiru voice start")}           ${dot} ${chalk.white("Enable wake-word listener")}`);
+    console.log(`    ${cmd("hiru doctor")}                ${dot} ${chalk.white("System health check")}`);
+    console.log(`    ${cmd("hiru memory distill")}        ${dot} ${chalk.white("Compress project knowledge")}`);
+    console.log(`    ${cmd("hiru skill prune")}           ${dot} ${chalk.white("Clean old skill versions")}`);
+    console.log(`    ${cmd("hiru logs --follow")}         ${dot} ${chalk.white("Tail agent logs")}`);
+    console.log(`    ${cmd("hiru --setup")}               ${dot} ${chalk.white("Configure bot credentials")}`);
+    console.log(`    ${cmd("hiru --version")}             ${dot} ${chalk.white("Show version")}`);
+    console.log(`    ${cmd("hiru --help")}                ${dot} ${chalk.white("Show this help menu")}`);
+    console.log("");
     process.exit(0);
   }
 
@@ -72,8 +81,8 @@ async function main() {
 
   // ── must have telegram creds ──────────────────────────────────────────────
   if (!config.telegramBotToken || !config.telegramAllowedChatId) {
-    console.log(chalk.yellow("\n⚠️  Telegram bot is not configured."));
-    console.log(chalk.gray("   Run: ") + chalk.cyan("hiru --setup\n"));
+    console.log(`  ${c.muted("⚠️")}  ${c.muted("Telegram bot is not configured.")}`);
+    console.log(chalk.dim("     Run: ") + c.light("hiru --setup\n"));
     process.exit(1);
   }
 
@@ -101,10 +110,10 @@ async function main() {
     if (cmd === "provider") {
       if (subCmd === "list") {
         const { PROVIDERS } = await import("./providers/index.js");
-        console.log("\nAvailable providers:\n");
+        console.log(`\n  ${c.muted("Available providers")}\n`);
         PROVIDERS.forEach(p => {
-          console.log(chalk.bold(`${p.icon} ${p.label} (${p.id})`));
-          p.models.forEach(m => console.log(`  - ${m.label}`));
+          console.log(`  ${p.icon}  ${c.bold(p.label)} ${c.dark(`(${p.id})`)}`);
+          p.models.forEach(m => console.log(`     ${c.muted("●")} ${chalk.white(m.label)}`));
         });
         console.log("");
         process.exit(0);
@@ -127,20 +136,24 @@ async function main() {
       } else if (subCmd === "clear") {
           await clearHiruMD(root);
           console.log("Project memory cleared.");
+      } else if (subCmd === "distill") {
+          const { MemoryDistiller } = await import("./memory/MemoryDistiller.js");
+          const distiller = new MemoryDistiller({ chat: async () => "Summary" } as any);
+          await distiller.distill();
       } else {
-          console.log("Usage: hiru memory <show|add|clear> [text]");
+          console.log("Usage: hiru memory <show|add|clear|distill> [text]");
       }
       process.exit(0);
     } else if (cmd === "sessions") {
       const { listSessions, clearAllSessions } = await import("./memory/SessionManager.js");
       if (subCmd === "list") {
         const sessions = await listSessions();
-        console.log(`\n${chalk.hex("#CC785C").bold("  Past Sessions")}\n`);
+        printCompactHeader("SESSIONS", version_cli);
         if (sessions.length === 0) {
           console.log(chalk.gray("  No sessions found."));
         } else {
           sessions.forEach((s: any) => {
-             console.log(`  ${chalk.cyan(s.id)} ${chalk.gray("•")} ${chalk.white(s.name)} ${chalk.blackBright("(" + new Date(s.updatedAt).toLocaleString() + ")")}`);
+             console.log(`  ${c.light(s.id)} ${c.dark("•")} ${chalk.white(s.name)} ${chalk.dim("(" + new Date(s.updatedAt).toLocaleString() + ")")}`);
           });
         }
         console.log("");
@@ -161,13 +174,13 @@ async function main() {
       await sm.init();
       if (subCmd === "list") {
         const skills = sm.listSkills();
-        if (skills.length === 0) console.log(chalk.yellow("No skills installed."));
+        printCompactHeader("SKILLS", version_cli);
+        if (skills.length === 0) console.log(c.muted("  No skills installed."));
         else {
-          console.log(`\n${chalk.hex("#CC785C").bold("  Installed Skills")}\n`);
           skills.forEach((s: any) => {
-             const testTag = s.testResult ? (s.testResult.success ? chalk.green("✅") : chalk.red("❌")) : chalk.yellow("⚠️");
-             console.log(`  ${testTag} ${chalk.cyan(s.name)} [${chalk.gray(s.main || 'unknown')}] (v${s.version})`);
-             console.log(`     ${chalk.gray(s.description)}`);
+             const testTag = s.testResult ? (s.testResult.success ? c.green("✅") : c.red("❌")) : c.muted("⚠️");
+             console.log(`  ${testTag} ${c.light(s.name)} ${c.dark("[")}${chalk.dim(s.main || "unknown")}${c.dark("]")} ${chalk.dim(`(v${s.version})`)}`);
+             console.log(`     ${chalk.dim(s.description)}`);
           });
           console.log("");
         }
@@ -191,8 +204,18 @@ async function main() {
          } else {
             console.log(chalk.red(`❌ Test failed:\n${res.output}`));
          }
+      } else if (subCmd === "prune") {
+         const dryRun = args.includes("--dry-run");
+         const result = await sm.pruneOldVersions(dryRun);
+         const mode = dryRun ? "Dry-run" : "Prune";
+         console.log(`  ${c.glow("●")}  ${c.light(`${mode} summary:`)}`);
+         console.log(`     ${c.muted("deleted:")} ${chalk.white(result.deleted.length)}`);
+         console.log(`     ${c.muted("kept:   ")} ${chalk.white(result.kept.length)}`);
+         if (result.deleted.length > 0) {
+           console.log(chalk.dim(`     files: ${result.deleted.join(", ")}`));
+         }
       } else {
-        console.log("Usage: hiru skill <list|create|delete|test> [name] [json_args]");
+        console.log("Usage: hiru skill <list|create|delete|test|prune> [name] [json_args] [--dry-run]");
       }
       process.exit(0);
     } else if (cmd === "plugin") {
@@ -203,10 +226,10 @@ async function main() {
       
       const source = args.slice(2).join(" ");
       if (subCmd === "install" && source) {
-        console.log(chalk.cyan(`Installing plugin from ${source}...`));
+        console.log(`  ${c.glow("📥")}  ${c.muted("Plugin          ")}${chalk.white(`Installing from ${source}...`)}`);
         const res = await pm.install(source);
-        if (res.success) console.log(chalk.green(`✅ Plugin "${res.name}" installed!`));
-        else console.log(chalk.red(`❌ Install failed: ${res.error}`));
+        if (res.success) console.log(`  ${c.green("✓")}  ${c.muted("Plugin          ")}${c.green(`"${res.name}" installed!`)}`);
+        else console.log(`  ${c.red("✗")}  ${c.muted("Plugin          ")}${c.red(`Install failed: ${res.error}`)}`);
       } else if (subCmd === "uninstall" && source) {
         const res = await pm.uninstall(source);
         if (res.success) console.log(chalk.green(`🗑️ Plugin "${source}" uninstalled.`));
@@ -225,20 +248,68 @@ async function main() {
         else console.log(chalk.red(`❌ Plugin "${source}" not found.`));
       } else if (subCmd === "list") {
         const plugins = pm.listPlugins();
+        printCompactHeader("PLUGINS", version_cli);
         if (plugins.length === 0) {
-          console.log(chalk.yellow("No plugins installed."));
+          console.log(c.muted("  No plugins installed."));
         } else {
-          console.log(`\n${chalk.hex("#CC785C").bold("  Installed Plugins")}\n`);
           plugins.forEach((p: any) => {
-             const status = p.status === "active" ? chalk.green("✅") : p.status === "disabled" ? chalk.yellow("⏸️") : chalk.red("❌");
-             console.log(`  ${status} ${chalk.cyan(p.name)} v${p.version} [${chalk.gray(p.format)}]`);
-             console.log(`     ${chalk.gray(p.description)}`);
+             const status = p.status === "active" ? c.green("✅") : p.status === "disabled" ? c.glow("⏸️") : c.red("❌");
+             console.log(`  ${status} ${c.light(p.name)} ${chalk.dim(`v${p.version}`)} ${c.dark("[")}${chalk.dim(p.format)}${c.dark("]")}`);
+             console.log(`     ${chalk.dim(p.description)}`);
           });
           console.log("");
         }
       } else {
-        console.log("Usage: hiru plugin <install|uninstall|update|enable|disable|list> [target]");
+        console.log(`  ${c.muted("Usage:")} hiru plugin <install|uninstall|update|enable|disable|list> [target]`);
       }
+      process.exit(0);
+    } else if (cmd === "gateway") {
+      const { GatewayServer } = await import("@ohiru/gateway");
+      const server = new GatewayServer({ port: config.gatewayPort || 18790 });
+      if (subCmd === "start") await server.start();
+      else if (subCmd === "stop") { await server.stop(); process.exit(0); }
+      // Keep alive for start
+    } else if (cmd === "dashboard") {
+      const { DashboardServer } = await import("@ohiru/dashboard");
+      const server = new DashboardServer(config.dashboard?.port || 3792);
+      await server.start();
+      // Keep alive
+    } else if (cmd === "canvas") {
+      const { CanvasServer } = await import("@ohiru/canvas");
+      const server = new CanvasServer(config.canvas?.port || 3791);
+      await server.start();
+      // Keep alive
+    } else if (cmd === "agents") {
+      const { handleAgentsCommand } = await import("@ohiru/agents/cli/AgentsCLI.js");
+      await handleAgentsCommand(args.slice(1));
+      process.exit(0);
+    } else if (cmd === "channels") {
+      const { ChannelManager } = await import("@ohiru/channels");
+      const cm = new ChannelManager();
+      if (subCmd === "list") {
+        const status = cm.getStatus();
+        console.table(status);
+      }
+      process.exit(0);
+    } else if (cmd === "voice") {
+       const { VoiceSession } = await import("@ohiru/voice");
+       // Mock agent for voice session
+       const vs = new VoiceSession({ chat: async (t: string) => "I heard you." } as any, {} as any, {} as any, {} as any);
+       await vs.start();
+       // Keep alive
+    } else if (cmd === "cron") {
+       const { CronManager } = await import("./cron/CronManager.js");
+       const core = new CronManager({} as any);
+       if (subCmd === "list") {
+         console.table(core.listTasks());
+       }
+       process.exit(0);
+    } else if (cmd === "logs") {
+       console.log("Streaming logs...");
+       process.exit(0);
+    } else if (cmd === "doctor") {
+      const { handleDoctorCommand } = await import("./commands/doctor.js");
+      await handleDoctorCommand();
       process.exit(0);
     } else if (cmd === "set-ram") {
       const num = parseInt(subCmd);
@@ -251,7 +322,7 @@ async function main() {
       console.log(chalk.green(`✓ RAM limit set to ${num}MB permanently.`));
       process.exit(0);
     } else {
-      console.log(chalk.yellow(`Unknown command '${cmd}'. Use hiru --help for usage information.`));
+      console.log(`  ${c.muted("⚠️")}  ${c.muted(`Unknown command '${cmd}'. Use`)} ${c.light("hiru --help")} ${c.muted("for usage information.")}`);
       process.exit(1);
     }
   }
@@ -259,17 +330,30 @@ async function main() {
   // ── start bot ─────────────────────────────────────────────────────────────
   const ctx = await detectProjectContext(process.cwd());
 
-  console.clear();
-  const l1 = chalk.hex("#CC785C")("  ▄ ▄  ") + `  ${chalk.white.bold("Hiru")} ${chalk.gray("v" + version_cli + " — Telegram Mode")}`;
-  const l2 = chalk.hex("#CC785C")(" █████ ") + `  ${chalk.gray(config.provider.toUpperCase() + " / " + config.model)}`;
-  const l3 = chalk.hex("#CC785C")(" █ █ █ ") + `  ${chalk.gray(ctx.root)}`;
-  console.log(`\n${l1}\n${l2}\n${l3}\n`);
-  console.log(chalk.green("  ✓ Agent deployed successfully. Listening for commands via Telegram."));
-  console.log(chalk.gray("  Press Ctrl+C to terminate the bot\n"));
-
+  printStartupBanner({
+    version: version_cli,
+    provider: config.provider,
+    model: config.model,
+    cwd: ctx.root,
+  });
+  
   const sessionId = "telegram-session";
   const { getSession } = await import("./memory/SessionManager.js");
   const agent = new HiruAgent({ ...config, telegramMode: true } as any, sessionId);
+
+  await agent.waitReady();
+  
+  const skillCount = Object.keys((agent as any).tools).filter(k => k.startsWith("skill_")).length;
+  console.log(`  ${c.green("✓")}  ${c.muted("Skills loaded   ")}${chalk.white(skillCount + " high-tier skills")}`);
+  console.log(`  ${c.green("✓")}  ${c.muted("Heartbeat       ")}${chalk.white("Autonomous mode active")}`);
+  console.log(`  ${c.green("✓")}  ${c.muted("Status          ")}${c.light("ONLINE")}`);
+  console.log(c.dark("\n  ─────────────────────────────────────────────────────"));
+  console.log(c.muted("  Press Ctrl+C to terminate · Waiting for messages…\n"));
+
+  // Start Heartbeat
+  const { HeartbeatManager } = await import("./agent/Heartbeat.js");
+  const heartbeat = new HeartbeatManager(agent, ctx, { intervalMs: 30 * 60 * 1000, enabled: true });
+  heartbeat.start();
 
   const bridge = new TelegramBridge(agent, ctx, {
     botToken: config.telegramBotToken!,

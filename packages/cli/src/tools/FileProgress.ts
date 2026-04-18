@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import fs from "node:fs/promises";
+import fs from "fs-extra";
 import path from "node:path";
 
 export interface FileProgressEvent {

@@ -3,8 +3,11 @@ import chalk from "chalk";
 import { PROVIDERS, getProvider } from "../providers/index.js";
 import { saveConfig } from "../utils/config.js";
 import { HiruConfig } from "shared";
+import { c } from "../ui/theme.js";
+import { printCompactHeader } from "../ui/banner.js";
 
-const theme = { accent: "#CC785C" };
+
+
 
 function formatModelHint(m: any): string {
   const price = m.inputPricePerM === 0 ? "FREE" : `$${m.inputPricePerM}/M in`;
@@ -20,19 +23,9 @@ export async function runSetupWizard(): Promise<HiruConfig> {
   const existingConfig = await loadConfig();
 
   console.clear();
-  console.log("");
-  console.log(chalk.hex(theme.accent).bold("  ██╗  ██╗██╗██████╗ ██╗   ██╗"));
-  console.log(chalk.hex(theme.accent).bold("  ██║  ██║██║██╔══██╗██║   ██║"));
-  console.log(chalk.hex(theme.accent).bold("  ███████║██║██████╔╝██║   ██║"));
-  console.log(chalk.hex(theme.accent).bold("  ██╔══██║██║██╔══██╗██║   ██║"));
-  console.log(chalk.hex(theme.accent).bold("  ██║  ██║██║██║  ██║╚██████╔╝"));
-  console.log(chalk.hex(theme.accent).bold("  ╚═╝  ╚═╝╚═╝╚═╝  ╚═╝ ╚═════╝ "));
-  console.log("");
-  console.log(chalk.bold("  hiru code  — agentic coding CLI"));
-  console.log(chalk.dim("  ─────────────────────────────────"));
-  console.log("");
+  printCompactHeader("SETUP WIZARD", "1.0.0");
 
-  p.intro(chalk.bgHex(theme.accent).black(existingConfig ? " Provider Switch " : " Initial Setup "));
+  p.intro(c.label(existingConfig ? "Provider Switch" : "Initial Setup"));
 
   const providerGroup = await p.group(
     {
@@ -161,7 +154,7 @@ export async function runSetupWizard(): Promise<HiruConfig> {
 
 export async function runModelChangeWizard(currentConfig: HiruConfig): Promise<HiruConfig> {
   console.clear();
-  p.intro(chalk.bgHex(theme.accent).black(` Change Model (${currentConfig.provider.toUpperCase()}) `));
+  p.intro(c.label(` Change Model (${currentConfig.provider.toUpperCase()}) `));
 
   const provider = getProvider(currentConfig.provider);
 

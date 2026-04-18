@@ -1,0 +1,18 @@
+{
+  "name": "crypto_tracker_v497",
+  "description": "Tracks real-time cryptocurrency prices.",
+  "version": 1,
+  "createdAt": "2026-04-18T11:10:32.363Z",
+  "updatedAt": "2026-04-18T11:10:32.363Z",
+  "author": "ai",
+  "parameters": {
+    "query": {
+      "type": "string",
+      "description": "Query string"
+    }
+  },
+  "tags": [
+    "prebuilt",
+    "generated"
+  ]
+}

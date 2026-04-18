@@ -1,99 +1,70 @@
 <h1 align="center">
-  O-Hiru CLI
+  🦞 O-HIRU — THE OVERPOWERED AI AGENT
 </h1>
 
 <p align="center">
-  <strong>Agentic Coding Assistant for Your Terminal</strong>
+  <strong>The #1 Personal Autonomous AI Agent. Beyond OpenClaw Parity.</strong>
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@kushuri12/ohiru">
-    <img src="https://img.shields.io/npm/v/@kushuri12/ohiru.svg?style=flat-square" alt="NPM Version" />
-  </a>
-  <a href="https://nodejs.org">
-    <img src="https://img.shields.io/badge/node_version-%3E%3D_18-brightgreen.svg?style=flat-square" alt="Node Version" />
-  </a>
-  <a href="#">
-    <img src="https://img.shields.io/badge/license-MIT-blue.svg?style=flat-square" alt="License" />
-  </a>
+  <img src="https://img.shields.io/npm/v/@kushuri12/ohiru.svg?style=flat-square&color=CC785C" alt="NPM Version" />
+  <img src="https://img.shields.io/badge/status-overpowered-CC785C?style=flat-square" alt="Status" />
+  <img src="https://img.shields.io/badge/capability-autonomous-blue?style=flat-square" alt="Capability" />
 </p>
 
 ---
 
-## ⚡ Overview
+## ⚡ WHAT IS O-HIRU?
 
-**O-Hiru CLI** is a powerful, AI-driven coding assistant built explicitly for your terminal. Designed to increase your development speed and accuracy, O-Hiru integrates directly with your local workspace, reads code context, analyzes project directories, and even automates desktop workflows—bringing an interactive, highly-capable AI companion right to where you type.
+**O-Hiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Inspired by OpenClaw but evolved for maximum performance, Hiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
 
-Whether you're debugging tricky logic, bootstrapping a new project, or parsing complex logs, O-Hiru steps in to help you code smarter.
+## 🚀 KEY MODULES
 
-## ✨ Features
+### 🧠 Autonomous Brain (v1.0.0)
+- **ReAct Loop:** Deep multi-step reasoning (Reason + Act) before every execution.
+- **Self-Critique:** Agent audits its own output for errors before reporting.
+- **Context Compressor:** Intelligent summarization so the agent never "forgets" in long threads.
+- **Heartbeat:** Runs every 30 mins to check your project status, monitor for errors, and suggest fixes.
 
-- 🧠 **Multi-Provider LLM Ecosystem:** Seamlessly connects with leading AI providers, including OpenAI, Anthropic, Google Gemini, Mistral, Groq, Cohere, and local inference via Ollama.
-- 📁 **Context-Aware:** Deeply reads into your workspaces to understand exactly what you are building. It analyzes directories, fetches repository structures, and reads code intelligently.
-- 💻 **Desktop Automation:** Out-of-the-box support for visual analysis! Take screenshots, navigate your OS, or automate UI tests effortlessly using `nut.js`. 
-- 🎨 **Beautiful TUI:** Built using React for the terminal (via Ink), O-Hiru sports modern styling, interactive chats, markdown rendering, and animated loading indicators.
-- 🛡️ **Memory Guard:** Includes sophisticated loop detection, checkpoint management, and context window compacting to ensure the AI never loses track of long coding sessions.
-- 📱 **Telegram Bridge:** Control or get notified by your AI assistant straight from Telegram using built-in integrations.
+### 🌐 Multi-Channel Gateway
+Hiru isn't just a bot; it's a **Nervous System**. Connect via:
+- **Major:** Telegram, Discord, Slack, WhatsApp Web
+- **Privacy:** Signal, Matrix (E2EE), IRC, Email
+- **Direct:** WebChat Widget, CLI-Chat, Ntfy
 
-## 🚀 Installation
+### 💾 3-Layer Memory System
+1. **Knowledge Graph:** Categorized facts about you, your project, and your preferences (`.md` files).
+2. **Daily Notes:** Automated daily logging of every action and decision.
+3. **Persistent Summary:** A master `HIRU.md` file that distills long-term wisdom from history.
 
-Ensure you have **Node.js (v18 or higher)** installed on your system.
+### 🎙️ Voice & Vision
+- **TTS/STT:** Talk to Hiru natively via OpenAI Whisper, ElevenLabs, or local engines.
+- **Wake Word:** Responds to "Hey Hiru" immediately.
+- **Canvas:** A live visual workspace where the agent renders charts, code diagrams, and UI mocks.
 
-### Option 1: Install via NPM (Recommended)
-You can directly install O-Hiru globally using NPM:
+## 🛠️ INSTALLATION
+
 ```bash
-npm install -g @kushuri12/ohiru
-```
-
-### Option 2: Mac / Linux Auto-Installer
-```bash
+# One-command install for Linux/macOS
 curl -fsSL https://o-hiru.ai/install.sh | bash
-```
 
-### Option 3: Windows PowerShell
-```powershell
+# One-command install for Windows
 powershell -c "irm https://o-hiru.ai/install.ps1 | iex"
 ```
 
-## 🛠️ Getting Started
+## 📖 CLI COMMANDS
 
-Once installed, simply run the assistant from any directory in your terminal:
+| Command | Description |
+| :--- | :--- |
+| `hiru` | Launch the main Telegram agent |
+| `hiru gateway start` | Start the WebSocket control plane |
+| `hiru dashboard start` | Open the Web UI dashboard (port 3792) |
+| `hiru doctor` | Run full system health checks |
+| `hiru agents add <id>` | Spawn a new isolated agent instance |
+| `hiru memory distill` | Manually compress project memory |
 
-```bash
-hiru
-```
+## 🛡️ CORE AGENT SOUL
+Hiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
 
-On first startup, O-Hiru will launch the **Setup Wizard** to help you configure your preferred AI provider and API keys securely into your local keychain.
-
-### Basic Commands
-Inside the interactive O-Hiru session, you can converse naturally or use slash-commands:
-- `/help` — List all available commands.
-- `/config` — Switch AI models or update API keys.
-- `/clear` — Reset your current conversaton context.
-- `/exit` — Close the assistant.
-
-## 📦 Development
-
-Want to compile or contribute to the project? Follow these steps:
-
-1. Clone the repository
-2. Install monorepo dependencies:
-   ```bash
-   npm install
-   ```
-3. Build the CLI package:
-   ```bash
-   npm run build
-   ```
-4. Run in development mode:
-   ```bash
-   npm run dev
-   ```
-
-## 🔐 Privacy & Security
-
-O-Hiru prioritizes your privacy. API keys are safely held in your OS-native secure keychain (`keytar`/keychain integration) rather than plain-text files. It only scans context within the directory where it's launched.
-
-## 📄 License
-
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+---
+*Developed with ❤️ by Hiru Team. v1.0.0 — OVERPOWERED.*

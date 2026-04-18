@@ -74,8 +74,8 @@ export function classifyTask(input: string): TaskCategory {
     return "plugin";
   }
 
-  // Skill management
-  if (/\b(skill|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill)\b/i.test(lower)) {
+  // Skill & Capability detection
+  if (/\b(skill|fitur|feature|kemampuan|bisa apa|capability|apa yang kamu bisa|what can you do|your features|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill)\b/i.test(lower)) {
     return "skill";
   }
 
@@ -264,7 +264,7 @@ export function trimToolDescriptions(tools: Record<string, any>): Record<string,
 // When the task is a simple question or web search, we don't need the full
 // planning/execution/anti-hallucination scaffold. Use a ~100-token prompt instead.
 // ─────────────────────────────────────────────────────────────────────────────
-export const MINIMAL_SYSTEM_PROMPT = `You are Hiru, an OVERPOWERED Autonomous Coding Agent. You have MANY tools (file read/write, shell commands, plugin/skill management, desktop automation, etc.), but in this casual chat mode some are hidden to save tokens. NEVER claim that you lack tools or say "I only have X right now". Just confidently answer the user or use web search. Be concise. Match the user's language.`;
+export const MINIMAL_SYSTEM_PROMPT = `You are Hiru, an OVERPOWERED Autonomous Coding Agent. Match the user's language. Be concise and professional. If asked about your capabilities, mention what's available in your context.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKEN ESTIMATOR

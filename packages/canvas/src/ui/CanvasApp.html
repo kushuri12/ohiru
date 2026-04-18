@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hiru Canvas</title>
+    <style>
+        :root {
+            --bg: #0D1117;
+            --surface: #161B22;
+            --border: #30363d;
+            --primary: #FF6B00;
+            --text: #C9D1D9;
+        }
+
+        body, html {
+            margin: 0; padding: 0; height: 100%; overflow: hidden;
+            background-color: var(--bg);
+            color: var(--text);
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        #viewport {
+            width: 100vw; height: 100vh;
+            position: relative;
+            cursor: grab;
+            transform-origin: 0 0;
+        }
+
+        .node {
+            position: absolute;
+            background-color: var(--surface);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            cursor: default;
+            transition: box-shadow 0.2s;
+        }
+
+        .node:hover { box-shadow: 0 8px 24px rgba(0,0,0,0.5); border-color: var(--primary); }
+
+        .node-header {
+            padding: 8px 12px;
+            background-color: rgba(255,255,255,0.05);
+            border-bottom: 1px solid var(--border);
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--primary);
+            display: flex;
+            justify-content: space-between;
+        }
+
+        .node-content {
+            flex: 1;
+            padding: 12px;
+            font-size: 14px;
+            line-height: 1.5;
+            white-space: pre-wrap;
+            overflow: auto;
+        }
+
+        .node-content code {
+            display: block;
+            background: rgba(0,0,0,0.2);
+            padding: 10px;
+            border-radius: 4px;
+            font-family: monospace;
+        }
+
+        #controls {
+            position: fixed;
+            bottom: 20px; right: 20px;
+            display: flex; gap: 10px;
+            z-index: 1000;
+        }
+
+        .btn {
+            background: var(--surface);
+            border: 1px solid var(--border);
+            color: var(--text);
+            padding: 10px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+
+        .btn:hover { background: #21262d; border-color: var(--primary); }
+    </style>
+</head>
+<body>
+    <div id="viewport"></div>
+    
+    <div id="controls">
+        <button class="btn" onclick="zoomIn()">Zoom +</button>
+        <button class="btn" onclick="zoomOut()">Zoom -</button>
+        <button class="btn" onclick="resetView()">Reset</button>
+    </div>
+
+    <script>
+        const viewport = document.getElementById('viewport');
+        let scale = 1;
+        let offset = { x: 0, y: 0 };
+        let isDragging = false;
+        let startPos = { x: 0, y: 0 };
+
+        let ws;
+
+        function connect() {
+            ws = new WebSocket(`ws://${window.location.host}`);
+            ws.onmessage = (event) => {
+                const payload = JSON.parse(event.data);
+                if (payload.type === 'SYNC' || payload.type === 'REFRESH') {
+                    renderNodes(payload.state.nodes);
+                } else if (payload.type === 'NODE_CREATED') {
+                    addNodeToDOM(payload.node);
+                } else if (payload.type === 'CLEAR') {
+                    viewport.innerHTML = '';
+                }
+            };
+        }
+
+        function renderNodes(nodes) {
+            viewport.innerHTML = '';
+            nodes.forEach(addNodeToDOM);
+        }
+
+        function addNodeToDOM(node) {
+            const div = document.createElement('div');
+            div.className = 'node';
+            div.id = `node-${node.id}`;
+            div.style.left = node.position.x + 'px';
+            div.style.top = node.position.y + 'px';
+            div.style.width = node.size.width + 'px';
+            div.style.height = node.size.height + 'px';
+
+            let contentHTML = node.content;
+            if (node.type === 'code') {
+                contentHTML = `<code>${node.content}</code>`;
+            }
+
+            div.innerHTML = `
+                <div class="node-header">
+                    <span>${node.type}</span>
+                    <span style="color: grey">${node.id.slice(0, 4)}</span>
+                </div>
+                <div class="node-content">${contentHTML}</div>
+            `;
+            viewport.appendChild(div);
+        }
+
+        // Viewport Pan/Zoom logic
+        window.addEventListener('mousedown', (e) => {
+            if (e.target === document.body || e.target === viewport) {
+                isDragging = true;
+                startPos = { x: e.clientX - offset.x, y: e.clientY - offset.y };
+                viewport.style.cursor = 'grabbing';
+            }
+        });
+
+        window.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            offset.x = e.clientX - startPos.x;
+            offset.y = e.clientY - startPos.y;
+            updateTransform();
+        });
+
+        window.addEventListener('mouseup', () => {
+            isDragging = false;
+            viewport.style.cursor = 'grab';
+        });
+
+        function updateTransform() {
+            viewport.style.transform = `translate(${offset.x}px, ${offset.y}px) scale(${scale})`;
+        }
+
+        function zoomIn() { scale *= 1.1; updateTransform(); }
+        function zoomOut() { scale /= 1.1; updateTransform(); }
+        function resetView() { scale = 1; offset = { x: 0, y: 0 }; updateTransform(); }
+
+        connect();
+    </script>
+</body>
+</html>

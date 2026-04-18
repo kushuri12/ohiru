@@ -383,8 +383,45 @@ export function createProviderInstance(config: HiruConfig): any {
     case "nvidia":
       return createOpenAI({ apiKey, baseURL: "https://integrate.api.nvidia.com/v1" }).chat(model);
       
-    default: throw new Error(`Unknown provider: ${provider}`);
   }
+}
+
+/**
+ * Special handling for Anthropic prompt caching.
+ * Matches static system prompts and tools for cost optimization.
+ */
+export function prepareAnthropicMessages(
+  systemPrompt: string,
+  tools: Record<string, any>,
+  messages: any[]
+) {
+  // Convert tools Record to array of tool definitions
+  const toolArray = Object.entries(tools).map(([name, def]) => ({
+    name,
+    description: def.description,
+    input_schema: {
+       type: "object",
+       properties: def.parameters.shape, // zod schema shape
+       required: Object.keys(def.parameters.shape).filter(k => !def.parameters.shape[k].isOptional())
+    }
+  }));
+
+  // System prompt part with cache breakpoint
+  const system = [
+    {
+      type: "text",
+      text: systemPrompt,
+      cache_control: { type: "ephemeral" }
+    }
+  ];
+
+  // Tools with cache breakpoint on the last tool
+  const cachedTools = toolArray.map((tool, i) => ({
+    ...tool,
+    ...(i === toolArray.length - 1 ? { cache_control: { type: "ephemeral" } } : {}),
+  }));
+
+  return { system, tools: cachedTools, messages };
 }
 
 /**

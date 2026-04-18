@@ -93,6 +93,14 @@ Keep it under 300 words. No filler.`;
   }
 
   /**
+   * Compacts messages by replacing older ones with a summary.
+   * Interface for Agent.ts
+   */
+  async compact(messages: any[]): Promise<any[]> {
+    return this.prune(messages);
+  }
+
+  /**
    * Prunes messages by replacing older ones with a summary.
    * Uses priority-based retention to keep user messages.
    */
@@ -172,4 +180,3 @@ Keep it under 300 words. No filler.`;
     return lines.join("\n");
   }
 }
-

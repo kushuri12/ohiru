@@ -1,7 +1,7 @@
 // src/plugins/PluginManager.ts
 // Core plugin engine — install from GitHub, hot-load, multi-format support
 
-import fs from "fs/promises";
+import fs from "fs-extra";
 import path from "path";
 import os from "os";
 import { EventEmitter } from "events";

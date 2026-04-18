@@ -1,6 +1,6 @@
 import path from "path";
 import os from "os";
-import fs from "fs/promises";
+import fs from "fs-extra";
 
 /**
  * .hiru directory in user's home for persistent data and storage
@@ -48,12 +48,11 @@ export async function ensureHiruDirs() {
     const newPath = path.join(HIRU_DATA_DIR, file);
     try {
       // Only move if old exists and new doesn't
-      const { access, rename } = await import("fs/promises");
-      const exists = await access(oldPath).then(() => true).catch(() => false);
-      const newExists = await access(newPath).then(() => true).catch(() => false);
+      const exists = await fs.access(oldPath).then(() => true).catch(() => false);
+      const newExists = await fs.access(newPath).then(() => true).catch(() => false);
       
       if (exists && !newExists) {
-        await rename(oldPath, newPath);
+        await fs.rename(oldPath, newPath);
       }
     } catch (e) {
       // Ignore migration errors

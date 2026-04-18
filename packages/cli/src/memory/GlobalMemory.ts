@@ -1,4 +1,4 @@
-import fs from "fs/promises";
+import fs from "fs-extra";
 import path from "path";
 import os from "os";
 import { HIRU_DATA_DIR } from "../utils/paths.js";

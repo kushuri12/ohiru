@@ -1,0 +1,29 @@
+{
+  "name": "@ohiru/gateway",
+  "version": "1.0.0",
+  "description": "The O-Hiru WebSocket Control Plane",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "dependencies": {
+    "ws": "^8.16.0",
+    "zod": "^3.22.4",
+    "express": "^4.18.3",
+    "chalk": "^5.3.0",
+    "uuid": "^9.0.1",
+    "fs-extra": "^11.2.0"
+  },
+  "devDependencies": {
+    "@types/ws": "^8.5.10",
+    "@types/express": "^4.17.21",
+    "@types/uuid": "^9.0.8",
+    "@types/fs-extra": "^11.0.4",
+    "typescript": "^5.3.3",
+    "tsx": "^4.7.1"
+  }
+}

@@ -1,14 +1,18 @@
 // src/telegram/TelegramSetup.ts
 import chalk from "chalk";
+import { c } from "../ui/theme.js";
+import { printCompactHeader } from "../ui/banner.js";
+import { MASCOT_SM } from "../ui/mascot.js";
 
 export async function runTelegramSetup(config: any): Promise<any> {
   const { text, password, isCancel, cancel, intro, outro, spinner } =
     await import("@clack/prompts");
 
-  console.log();
-  intro(chalk.bgCyan(chalk.black(" Setup Telegram Bot ")));
+  console.clear();
+  printCompactHeader("TELEGRAM SETUP", "1.0.0");
+  intro(c.label(" Setup Telegram Bot ") + ` ${MASCOT_SM}`);
 
-  console.log(chalk.gray(`
+  console.log(chalk.dim(`
   Instructions:
   1. Open Telegram → search for @BotFather
   2. Send /newbot → follow instructions → copy token
@@ -49,7 +53,7 @@ export async function runTelegramSetup(config: any): Promise<any> {
     if (!res.ok) throw new Error(await res.text());
     s.stop("Success ✓");
   } catch (e: any) {
-    s.stop(chalk.red("Failed: " + e.message));
+    s.stop(c.red("Failed: " + e.message));
     process.exit(1);
   }
 
@@ -62,6 +66,6 @@ export async function runTelegramSetup(config: any): Promise<any> {
   const { saveConfig } = await import("../utils/config.js");
   await saveConfig(updated);
 
-  outro(chalk.green("Setup complete! You can now run: ") + chalk.cyan("hiru"));
+  outro(c.green("✨ Setup complete!") + ` ${chalk.white("You can now run: ")}` + c.light("hiru"));
   return updated;
 }

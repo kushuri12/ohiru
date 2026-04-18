@@ -14,6 +14,12 @@
   },
   "include": ["src/**/*"],
   "references": [
-    { "path": "../../shared" }
+    { "path": "../../shared" },
+    { "path": "../gateway" },
+    { "path": "../agents" },
+    { "path": "../canvas" },
+    { "path": "../dashboard" },
+    { "path": "../channels" },
+    { "path": "../voice" }
   ]
 }

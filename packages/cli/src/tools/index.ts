@@ -1,5 +1,5 @@
 import { z } from "zod";
-import fs from "fs/promises";
+import fs from "fs-extra";
 import path from "path";
 import { execa } from "execa";
 import { EventEmitter } from "events";

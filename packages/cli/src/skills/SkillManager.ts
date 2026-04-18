@@ -1,10 +1,11 @@
-// src/skills/SkillManager.ts
-import fs from "fs/promises";
+import { execa } from "execa";
+import fs from "fs-extra";
 import path from "path";
 import os from "os";
+import chalk from "chalk";
 import { z } from "zod";
 import { EventEmitter } from "events";
-import { execa } from "execa";
+import { SkillVersionManager } from "./SkillVersionManager.js";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -124,6 +125,20 @@ export class SkillManager extends EventEmitter {
     await fs.mkdir(this.skillsDir, { recursive: true });
     await this.migrateLegacySkills(); // Optional: Support legacy format migration
     await this.loadAll();
+    // Auto-prune stale versions without blocking startup.
+    this.pruneOldVersions(false).catch(() => {});
+  }
+
+  /**
+   * Prune old versions of skills from the library directory.
+   */
+  async prune(dryRun: boolean = true): Promise<{ deleted: string[]; kept: string[] }> {
+    const versionManager = new SkillVersionManager(this.skillsDir);
+    return await versionManager.pruneOldVersions(dryRun);
+  }
+
+  async pruneOldVersions(dryRun: boolean = true): Promise<{ deleted: string[]; kept: string[] }> {
+    return this.prune(dryRun);
   }
 
   /**
@@ -181,22 +196,35 @@ export class SkillManager extends EventEmitter {
   async loadAll(): Promise<void> {
     this.loadedSkills.clear();
 
-    let entries: string[];
-    try {
-      const allEntries = await fs.readdir(this.skillsDir, { withFileTypes: true });
-      entries = allEntries
-        .filter(dirent => dirent.isDirectory())
-        .map(dirent => dirent.name);
-    } catch {
-      return;
+    const versionManager = new SkillVersionManager(this.skillsDir);
+    const latestVersions = await versionManager.getLatestVersions();
+    
+    // 1. Load versioned flat skills (Library style)
+    for (const [baseName, jsonPath] of latestVersions.entries()) {
+      try {
+        await this.loadOne(baseName, jsonPath);
+      } catch (e: any) {
+        console.error(`  ⚠️ Failed to load library skill "${baseName}": ${e.message}`);
+      }
     }
 
-    for (const skillName of entries) {
-      try {
-        await this.loadOne(skillName);
-      } catch (e: any) {
-        console.error(`  ⚠️ Failed to load skill "${skillName}": ${e.message}`);
+    // 2. Load directory-based skills (User style)
+    try {
+      const entries = await fs.readdir(this.skillsDir, { withFileTypes: true });
+      const folders = entries.filter(e => e.isDirectory()).map(e => e.name);
+      
+      for (const folderName of folders) {
+        // Skip if already loaded as a versioned skill (unlikely but safe)
+        if (this.loadedSkills.has(folderName)) continue;
+        
+        try {
+          await this.loadOne(folderName);
+        } catch (e: any) {
+          // Silent for folders that aren't actually skills
+        }
       }
+    } catch {
+      // Ignore readdir errors
     }
 
     if (this.loadedSkills.size > 0) {
@@ -206,11 +234,14 @@ export class SkillManager extends EventEmitter {
 
   /**
    * Load a single skill by name (supports multi-file, multi-language skills)
+   * @param name The name of the skill
+   * @param flatJsonPath If provided, loads as a flat versioned skill from this JSON path
    */
-  private async loadOne(name: string): Promise<LoadedSkill | null> {
-    const skillDir = path.join(this.skillsDir, name);
-    const metaPath = path.join(skillDir, `${name}.json`);
-    const mdPath = path.join(skillDir, `${name}.md`);
+  private async loadOne(name: string, flatJsonPath?: string): Promise<LoadedSkill | null> {
+    const isFlat = !!flatJsonPath;
+    const skillDir = isFlat ? path.dirname(flatJsonPath) : path.join(this.skillsDir, name);
+    const metaPath = isFlat ? flatJsonPath : path.join(skillDir, `${name}.json`);
+    const mdPath = isFlat ? metaPath.replace(".json", ".md") : path.join(skillDir, `${name}.md`);
 
     // metadata.json MUST exist
     const metaExists = await fs.access(metaPath).then(() => true).catch(() => false);
@@ -233,10 +264,10 @@ export class SkillManager extends EventEmitter {
       if (await fs.access(legacyPath).then(() => true).catch(() => false)) {
         mainFile = `${name}.mjs`;
       } else {
-        // Auto-detect: scan directory for first executable file by priority
+        const discoveryBase = isFlat ? path.basename(metaPath, ".json") : name;
         const dirFiles = await fs.readdir(skillDir);
         for (const ext of MAIN_FILE_PRIORITY) {
-          const candidate = dirFiles.find(f => f.endsWith(ext) && !f.endsWith(".json") && !f.endsWith(".md"));
+          const candidate = dirFiles.find(f => f.toLowerCase() === `${discoveryBase}${ext}`);
           if (candidate) {
             mainFile = candidate;
             break;
@@ -258,7 +289,9 @@ export class SkillManager extends EventEmitter {
     if (runtime === null) {
       // ── Native JS/ESM import ────────────────────────
       const fileUrl = `file:///${mainPath.replace(/\\/g, "/")}`;
-      const mod = await import(/* @vite-ignore */ fileUrl);
+      
+      // Cache-busting for hot reload
+      const mod = await import(`${fileUrl}?update=${Date.now()}`);
       const fn = mod.default || mod.execute;
 
       if (typeof fn !== "function") {

@@ -1,7 +1,7 @@
 // packages/cli/src/tools/ToolValidator.ts
 // Post-execution validation for critical tool operations.
 
-import fs from "fs/promises";
+import fs from "fs-extra";
 
 export interface ValidationResult {
   readonly valid: boolean;

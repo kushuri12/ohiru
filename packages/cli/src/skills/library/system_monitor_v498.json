@@ -1,0 +1,18 @@
+{
+  "name": "system_monitor_v498",
+  "description": "Monitors CPU, RAM, and Disk usage.",
+  "version": 1,
+  "createdAt": "2026-04-18T11:10:32.368Z",
+  "updatedAt": "2026-04-18T11:10:32.368Z",
+  "author": "ai",
+  "parameters": {
+    "query": {
+      "type": "string",
+      "description": "Query string"
+    }
+  },
+  "tags": [
+    "prebuilt",
+    "generated"
+  ]
+}
