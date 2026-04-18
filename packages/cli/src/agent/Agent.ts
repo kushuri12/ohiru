@@ -1235,11 +1235,7 @@ export class HiruAgent extends EventEmitter {
              if (this.currentStepIndex < this.trackedSteps.length - 1) this.currentStepIndex++;
           }
           
-          const loop = this.loopDetector.detect();
-          if (loop.isLoop) {
-            this.emit("error", new Error(`Loop: ${loop.message}`));
-            return;
-          }
+          // Loop detector removed per user request
         }
       }
 
