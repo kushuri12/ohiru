@@ -718,14 +718,8 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const planText = this.formatter.formatPlan(plan);
       await this.sendText(planText);
       this.pendingPlanResolve = (v: boolean) => this.agent.resolvePlanApproval(v);
-      await this.bot.api.sendMessage(this.currentChatId, "📋 **Is this plan correct?**\n(Reply 'Yes' or use buttons)", {
-        parse_mode: "Markdown",
-        reply_markup: {
-          inline_keyboard: [[
-            { text: "✅ Yes, Continue", callback_data: "plan_approve" },
-            { text: "❌ Cancel",         callback_data: "plan_reject" },
-          ]],
-        },
+      await this.bot.api.sendMessage(this.currentChatId, "📋 *Is this plan correct?*\nReply 'Yes' to continue, or 'No' to cancel.", {
+        parse_mode: "Markdown"
       });
     });
 
@@ -742,15 +736,9 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         `🛡️ *Permission Required*\n\n` +
         `${emoji} *Tool:* \`${req.toolName}\`\n` +
         `📦 *Args:* \`${argStr}\`\n\n` +
-        `Allow this action?`, 
+        `Allow this action?\nReply 'Yes' to allow, or 'No' to deny.`, 
         { 
-          parse_mode: "Markdown",
-          reply_markup: {
-            inline_keyboard: [[
-              { text: "✅ Allow", callback_data: `perm_approve:${req.toolName}` },
-              { text: "❌ Deny",  callback_data: `perm_reject:${req.toolName}` },
-            ]],
-          },
+          parse_mode: "Markdown"
         }
       );
     });
