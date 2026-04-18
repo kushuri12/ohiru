@@ -239,8 +239,9 @@ export function trimToolDescriptions(tools: Record<string, any>): Record<string,
   const trimmed: Record<string, any> = {};
   
   for (const [name, tool] of Object.entries(tools)) {
-    // If it's a structural description (has lists), don't trim at all
-    if (tool.description && (tool.description.includes("- ") || tool.description.includes("You can:"))) {
+    // If it's a structural description (has lists/bullets), don't trim at all
+    const hasList = /[\n\r]\s*([-*]|\d+\.)\s/.test(tool.description || "");
+    if (tool.description && (hasList || tool.description.includes("You can:") || tool.description.includes("Example:"))) {
       trimmed[name] = tool;
       continue;
     }
