@@ -235,18 +235,20 @@ export function applyTieredCompression(messages: any[]): any[] {
 // By trimming to 80 chars, we save ~120-420 chars per tool × 30 tools = ~10k chars.
 // ─────────────────────────────────────────────────────────────────────────────
 export function trimToolDescriptions(tools: Record<string, any>): Record<string, any> {
-  const MAX_DESC = 80; // Max chars for tool description
+  const MAX_DESC = 350; // Increased from 80 — 350 is safe for detailed instructions
   const trimmed: Record<string, any> = {};
   
   for (const [name, tool] of Object.entries(tools)) {
+    // If it's a structural description (has lists), don't trim at all
+    if (tool.description && (tool.description.includes("- ") || tool.description.includes("You can:"))) {
+      trimmed[name] = tool;
+      continue;
+    }
+
     if (tool.description && tool.description.length > MAX_DESC) {
-      // Keep only first sentence (up to first period, newline, or max chars)
-      const firstSentence = tool.description.split(/[.\n]/)[0].trim();
       trimmed[name] = {
         ...tool,
-        description: firstSentence.length > MAX_DESC
-          ? firstSentence.slice(0, MAX_DESC) + "…"
-          : firstSentence,
+        description: tool.description.slice(0, MAX_DESC) + "...",
       };
     } else {
       trimmed[name] = tool;

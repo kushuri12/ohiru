@@ -424,7 +424,8 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         
         // Final check: if no response msg was sent and no buffer exists, notify user
         const finalFormatted = this.formatter.formatResponse(this.responseBuffer);
-        if (!this.currentResponseMsgId && !finalFormatted) {
+        const hasSentAnything = this.sentResponseTexts.size > 0 || this.currentResponseMsgId;
+        if (!hasSentAnything && !finalFormatted) {
            await this.sendText("✅ Done (Internal process complete, no text output produced).");
         }
 
@@ -648,24 +649,15 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
 
     this.agent.on("token", (t: string) => {
       // Dedup guard: detect if the model is repeating itself
-      // Check if this token batch is a repeat of what we've already buffered
-      if (t.length > 20) {
-        // For substantial token chunks, check if the buffer already ends with this text
-        if (this.responseBuffer.endsWith(t)) {
-          this.tokenRepeatCount++;
-          if (this.tokenRepeatCount > 2) {
-            // Model is looping — stop accumulating
-            return;
-          }
-        } else {
-          this.tokenRepeatCount = 0;
-        }
-        
-        // Check if the entire token is a repetition of existing buffer content
-        const bufferTrimmed = this.responseBuffer.trim();
-        const tokenTrimmed = t.trim();
-        if (bufferTrimmed.length > 50 && tokenTrimmed.length > 50 && bufferTrimmed.includes(tokenTrimmed)) {
-          // Token content already exists in buffer — skip
+      // Check if this token batch or a significant part of it is a repeat
+      const currentBuf = this.responseBuffer;
+      const tTrim = t.trim();
+      
+      if (tTrim.length > 5 && currentBuf.includes(tTrim)) {
+        this.tokenRepeatCount++;
+        if (this.tokenRepeatCount > 15) {
+          console.log("🛑 Phrase repetition detected. Stopping stream.");
+          this.agent.stop();
           return;
         }
       }
