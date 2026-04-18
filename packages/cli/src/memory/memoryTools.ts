@@ -21,33 +21,44 @@ You MUST use this anytime the user shares personal details, preferences, or impo
                 value: z.string().optional().describe("Preference value (for set_pref / set_identity)")
             }),
             execute: async (args: { action: string, fact?: string, index?: number, key?: string, value?: string }) => {
-                switch(args.action) {
+                const action = String(args.action || "").trim().toLowerCase();
+                switch(action) {
                     case "set_identity":
+                    case "setidentity":
                         if (!args.value) return "Error: 'value' (identity text) required";
                         await memory.setIdentity(args.value);
                         return `✨ Identity updated. Hiru now knows who they are.`;
                     case "add_fact":
+                    case "addfact":
+                    case "add":
                         if (!args.fact) return "Error: 'fact' text required";
                         await memory.addFact(args.fact);
                         return `✅ Fact saved: "${args.fact}"`;
                     case "remove_fact":
-                        if (typeof args.index !== "number") return "Error: 'index' required";
-                        await memory.removeFact(args.index);
+                    case "removefact":
+                    case "delete_fact":
+                        if (typeof args.index !== "number" && !args.index) return "Error: 'index' required";
+                        await memory.removeFact(Number(args.index));
                         return `✅ Fact at index ${args.index} removed.`;
                     case "set_pref":
+                    case "setpref":
+                    case "pref":
                         if (!args.key || !args.value) return "Error: 'key' and 'value' required";
                         await memory.setPreference(args.key, args.value);
                         return `✅ Preference saved: ${args.key}=${args.value}`;
                     case "remove_pref":
+                    case "removepref":
+                    case "delete_pref":
                         if (!args.key) return "Error: 'key' required";
                         await memory.deletePreference(args.key);
                         return `✅ Preference removed: ${args.key}`;
                     case "list":
                     case "get_all":
                     case "show":
+                    case "get":
                         return JSON.stringify(memory.getData(), null, 2);
                     default:
-                        return `Error: Unknown action "${args.action}". You MUST use one of: add_fact, remove_fact, set_pref, remove_pref, list, set_identity.`;
+                        return `Error: Unknown action "${args.action}". Available: add_fact, set_pref, list, remove_fact, etc.`;
                 }
             }
         }

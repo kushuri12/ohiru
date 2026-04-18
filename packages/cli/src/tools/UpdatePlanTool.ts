@@ -21,8 +21,17 @@ export const UpdatePlanTool = {
   }),
   requiresPermission: false, 
   execute: async ({ steps, explanation }: any) => {
-    // In Hiru, the Agent class manages the todoTracker.
-    // This execution context will return the updated plan to the Agent.
+    // Normalize statuses for flexibility
+    if (Array.isArray(steps)) {
+      for (const s of steps) {
+        if (!s.status) s.status = "pending";
+        const st = String(s.status).toLowerCase();
+        if (st.includes("done") || st.includes("complete") || st.includes("finish")) s.status = "completed";
+        else if (st.includes("progress") || st.includes("running")) s.status = "in_progress";
+        else s.status = "pending";
+      }
+    }
+
     return {
       message: "Plan updated successfully.",
       explanation,
