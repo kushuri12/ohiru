@@ -572,9 +572,9 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const toolName = ctx.match[1];
       try { await ctx.answerCallbackQuery(`✅ Executing ${toolName}`); } catch {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
-      const resolve = (this.agent as any).pendingPermResolve;
+      const resolve = this.pendingPermResolve;
       if (resolve) {
-        (this.agent as any).pendingPermResolve = null;
+        this.pendingPermResolve = null;
         resolve(true);
       }
     });
@@ -583,9 +583,9 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const toolName = ctx.match[1];
       try { await ctx.answerCallbackQuery(`❌ Rejected ${toolName}`); } catch {}
       try { await ctx.editMessageReplyMarkup({ reply_markup: { inline_keyboard: [] } }); } catch {}
-      if (this.pendingPermResolve) {
-        const resolve = (this.agent as any).pendingPermResolve;
-        (this.agent as any).pendingPermResolve = null;
+      const resolve = this.pendingPermResolve;
+      if (resolve) {
+        this.pendingPermResolve = null;
         resolve(false);
       }
     });
@@ -722,7 +722,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
 
     this.agent.on("permissionRequest", async (req: any) => {
       if (!this.currentChatId) return;
-      (this.agent as any).pendingPermResolve = req.resolve;
+      this.pendingPermResolve = req.resolve;
       const emoji = (TOOL_EMOJI as any)[req.toolName] ?? "⚙️";
       const argStr = JSON.stringify(req.args).slice(0, 100);
       await this.bot.api.sendMessage(this.currentChatId, 
