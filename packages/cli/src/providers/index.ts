@@ -382,11 +382,55 @@ export function createProviderInstance(config: HiruConfig): any {
  * Pre-flight check: verify Ollama is actually running before attempting any LLM call.
  * Returns null if OK, or a human-readable error string if it is unreachable.
  */
+/**
+ * Verify if a specific model is available in Ollama, and pull it if not.
+ */
+export async function ensureOllamaModel(baseUrl: string | undefined, modelName: string, onProgress?: (msg: string) => void): Promise<void> {
+  let url = baseUrl?.trim() || "http://localhost:11434";
+  url = url.replace(/\/api\/?$/, "");
+
+  // 1. Check if model exists
+  try {
+    const res = await fetch(`${url}/api/tags`);
+    if (res.ok) {
+      const data: any = await res.json();
+      const models = data.models || [];
+      const exists = models.some((m: any) => 
+        m.name === modelName || 
+        m.name === `${modelName}:latest` ||
+        modelName === `${m.name}:latest`
+      );
+      
+      if (exists) return; // Model exists, we are good
+    }
+  } catch (e) {
+    throw new Error(`Failed to check Ollama models: ${e}`);
+  }
+
+  // 2. Model not found, trigger pull
+  onProgress?.(`📥 Model *${modelName}* not found. Pulling from Ollama registry...`);
+  
+  try {
+    const res = await fetch(`${url}/api/pull`, {
+      method: "POST",
+      body: JSON.stringify({ name: modelName, stream: false }), // We'll do non-streaming for simplicity in this bridge
+    });
+
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || `Pull failed with status ${res.status}`);
+    }
+    
+    onProgress?.(`✅ Model *${modelName}* pulled successfully.`);
+  } catch (e: any) {
+    throw new Error(`Failed to pull model "${modelName}": ${e.message}`);
+  }
+}
+
 export async function checkOllamaConnection(baseUrl?: string): Promise<string | null> {
   let url = baseUrl?.trim() || "http://localhost:11434";
-  // Normalize: strip trailing /api if present
   url = url.replace(/\/api\/?$/, "");
-  // Reject obviously-wrong URLs that slipped through
+  
   if (
     !url ||
     url.includes("api.nvidia.com") ||
@@ -397,7 +441,6 @@ export async function checkOllamaConnection(baseUrl?: string): Promise<string | 
   }
 
   try {
-    // Ollama's root endpoint returns a simple 200 with "Ollama is running"
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 4000);
     const res = await fetch(`${url}/api/tags`, { signal: controller.signal });
@@ -405,7 +448,7 @@ export async function checkOllamaConnection(baseUrl?: string): Promise<string | 
     if (!res.ok) {
       return `Ollama returned HTTP ${res.status}. Is the right version installed?`;
     }
-    return null; // All good
+    return null; 
   } catch (e: any) {
     const code = e?.cause?.code || e?.code || "";
     const isRefused = code === "ECONNREFUSED" || e?.message?.includes("fetch failed") || e?.name === "AbortError";
@@ -413,8 +456,7 @@ export async function checkOllamaConnection(baseUrl?: string): Promise<string | 
       return (
         `Cannot connect to Ollama at ${url}.\n` +
         `  → Make sure Ollama is running: https://ollama.com/download\n` +
-        `  → Then start it with: ollama serve\n` +
-        `  → Or run a model directly: ollama run <model-name>`
+        `  → Then start it with: ollama serve`
       );
     }
     return `Ollama connection error: ${e?.message || e}`;

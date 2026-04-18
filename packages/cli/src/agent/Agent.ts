@@ -182,6 +182,18 @@ export class HiruAgent extends EventEmitter {
             }
           }
         });
+
+        // 5. Ollama health check & auto-pull
+        if (this.config.provider === "ollama") {
+          const { checkOllamaConnection, ensureOllamaModel } = await import("../providers/index.js");
+          const connErr = await checkOllamaConnection(this.config.baseUrl);
+          if (!connErr) {
+            await ensureOllamaModel(this.config.baseUrl, this.config.model, (msg) => {
+              this.emit("status", msg.replace(/\*/g, ""));
+              console.log(`[Ollama] ${msg.replace(/\*/g, "")}`);
+            }).catch(err => console.error(`[Ollama Error] ${err.message}`));
+          }
+        }
       } catch (e: any) {
         console.error(chalk.yellow(`  ⚠️  Systems init failed: ${e.message}`));
       }

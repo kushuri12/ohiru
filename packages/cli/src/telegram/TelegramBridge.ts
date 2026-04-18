@@ -224,6 +224,16 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       }
 
       try {
+        if (providerId === "ollama") {
+          await ctx.reply(`⚙️ Checking Ollama model *${newConfig.model}*...`, { parse_mode: "Markdown" });
+          const { ensureOllamaModel } = await import("../providers/index.js");
+          await ensureOllamaModel(newConfig.baseUrl, newConfig.model, async (msg) => {
+            await ctx.reply(msg, { parse_mode: "Markdown" });
+          }).catch(err => {
+             console.error(`[Ollama Pull Error] ${err.message}`);
+          });
+        }
+
         this.agent.updateConfig(newConfig);
         await saveConfig(newConfig);
         await ctx.reply(`✅ **AI Provider Updated & Saved**\n\n• Provider: \`${providerId}\` \n• Model: \`${newConfig.model || "default"}\`\n\nChanges applied immediately and saved to \`.hirurc\`.`, { parse_mode: "Markdown" });
