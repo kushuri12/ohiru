@@ -18,7 +18,7 @@ import { runTelegramSetup } from "./telegram/TelegramSetup.js";
 import { ensureHiruDirs } from "./utils/paths.js";
 import { setupWindowsTerminal } from "./utils/platform.js";
 
-export const version_cli = "0.1.3";
+export const version_cli = "0.2.0";
 
 async function main() {
   await ensureHiruDirs();
@@ -271,7 +271,10 @@ async function main() {
   const { getSession } = await import("./memory/SessionManager.js");
   const agent = new HiruAgent({ ...config, telegramMode: true } as any, sessionId);
 
-  await agent.waitReady();
+  const bridge = new TelegramBridge(agent, ctx, {
+    botToken: config.telegramBotToken!,
+    allowedChatId: config.telegramAllowedChatId!,
+  });
 
   const existing = await getSession(sessionId);
   if (existing) {
@@ -280,10 +283,7 @@ async function main() {
     console.log(chalk.gray(`  ✓ Restored context footprint (${agent.messages.length} messages).`));
   }
 
-  const bridge = new TelegramBridge(agent, ctx, {
-    botToken: config.telegramBotToken!,
-    allowedChatId: config.telegramAllowedChatId!,
-  });
+  await agent.waitReady();
 
   process.on("SIGINT", async () => {
     console.log(chalk.gray("\n  Suspending agent process..."));

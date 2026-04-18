@@ -239,7 +239,7 @@ export const PROVIDERS: ProviderDef[] = [
     label: "Ollama (Local)",
     description: "Run models OFFLINE on your own machine — FREE, private",
     icon: "",
-    apiKeyEnv: "",
+    apiKeyEnv: "OLLAMA_API_KEY",
     apiKeyLabel: "",
     apiKeyUrl: "https://ollama.com/download",
     supportsCustomModel: true,
@@ -366,7 +366,16 @@ export function createProviderInstance(config: HiruConfig): any {
       if (!finalOllamaUrl || finalOllamaUrl.includes("api.nvidia.com") || finalOllamaUrl.includes("api.openai.com") || finalOllamaUrl.includes("api.groq.com")) {
          finalOllamaUrl = "http://localhost:11434";
       }
-      const ollama = createOllama({ baseURL: finalOllamaUrl });
+      
+      const headers: Record<string, string> = {};
+      if (apiKey && apiKey !== "dummy") {
+        headers["Authorization"] = `Bearer ${apiKey}`;
+      }
+      
+      const ollama = createOllama({ 
+        baseURL: finalOllamaUrl,
+        headers
+      });
       return ollama(model);
     }
     case "minimax":
