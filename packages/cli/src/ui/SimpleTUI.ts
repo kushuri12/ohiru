@@ -541,10 +541,8 @@ export class SimpleTUI {
                 const upDown = match[4];
                 
                 const isClick = (btn === 0 && upDown === "M");
-                // Movement codes often range from 32-35 or are reported with 67
-                const isHover = (btn >= 32 && btn <= 35) || btn === 67;
                 
-                if (isClick || isHover) {
+                if (isClick) {
                     this.handleMouseEvent(x, y, isClick);
                 }
             }
@@ -668,9 +666,12 @@ export class SimpleTUI {
         this.settingsIndex = 0;
         this.scheduleRender();
     } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
-        this.searchQuery += str;
-        this.settingsIndex = 0;
-        this.scheduleRender();
+        // Strict printable filter for search: A-Z, 0-9, spaces, simple symbols
+        if (/^[a-zA-Z0-9\s._\-\/]$/.test(str)) {
+            this.searchQuery += str;
+            this.settingsIndex = 0;
+            this.scheduleRender();
+        }
     } else if (key.name === "return") {
       if (this.settingsView === "main") {
         if (this.settingsIndex === 0) { this.settingsView = "provider"; this.settingsIndex = 0; }
