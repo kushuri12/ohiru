@@ -6,7 +6,7 @@ export class PersistentSummary {
   private filePath: string;
 
   constructor(customPath?: string) {
-    this.filePath = customPath || path.join(os.homedir(), ".hiru", "memory", "HIRU.md");
+    this.filePath = customPath || path.join(os.homedir(), ".openhiru", "memory", "OPENHIRU.md");
     fs.ensureFileSync(this.filePath);
     this.initializeIfEmpty();
   }
@@ -14,7 +14,7 @@ export class PersistentSummary {
   private async initializeIfEmpty() {
     const content = await fs.readFile(this.filePath, "utf8");
     if (!content.trim()) {
-      const template = `# HIRU MEMORY (Layer 3)
+      const template = `# OPENHIRU MEMORY (Layer 3)
 
 # Facts
 - Concrete verified facts about the user/project.

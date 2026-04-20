@@ -7,7 +7,7 @@ export class KnowledgeGraph {
   private baseDir: string;
 
   constructor(customDir?: string) {
-    this.baseDir = customDir || path.join(os.homedir(), ".hiru", "memory", "knowledge");
+    this.baseDir = customDir || path.join(os.homedir(), ".openhiru", "memory", "knowledge");
     fs.ensureDirSync(this.baseDir);
   }
 

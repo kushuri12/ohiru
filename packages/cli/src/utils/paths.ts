@@ -3,9 +3,10 @@ import os from "os";
 import fs from "fs-extra";
 
 /**
- * .hiru directory in user's home for persistent data and storage
+ * .openhiru directory in user's home for persistent data and storage
  */
-export const HIRU_DIR = path.join(os.homedir(), ".hiru");
+export const HIRU_DIR = path.join(os.homedir(), ".openhiru");
+const OLD_HIRU_DIR = path.join(os.homedir(), ".hiru");
 
 /**
  * .hiru/screenshot for screenshots taken by tools
@@ -31,6 +32,15 @@ export const HIRU_EXPORTS_DIR = path.join(HIRU_DIR, "exports");
  * Ensure all standard hiru directories exist and migrate old files if needed.
  */
 export async function ensureHiruDirs() {
+  // Migration: If .hiru exists but .openhiru doesn't, rename it
+  try {
+    const oldExists = await fs.access(OLD_HIRU_DIR).then(() => true).catch(() => false);
+    const newExists = await fs.access(HIRU_DIR).then(() => true).catch(() => false);
+    if (oldExists && !newExists) {
+      await fs.rename(OLD_HIRU_DIR, HIRU_DIR);
+    }
+  } catch (e) { /* ignore */ }
+
   await fs.mkdir(HIRU_SCREENSHOTS_DIR, { recursive: true });
   await fs.mkdir(HIRU_RECEIVED_DIR, { recursive: true });
   await fs.mkdir(HIRU_DATA_DIR, { recursive: true });
@@ -57,6 +67,24 @@ export async function ensureHiruDirs() {
     } catch (e) {
       // Ignore migration errors
     }
+  }
+
+  // Migration for config files
+  const configs = [
+    { old: ".hirurc", new: ".openhirurc" },
+    { old: ".hiru.env", new: ".openhiru.env" }
+  ];
+
+  for (const cfg of configs) {
+    const oldP = path.join(os.homedir(), cfg.old);
+    const newP = path.join(os.homedir(), cfg.new);
+    try {
+      const exists = await fs.access(oldP).then(() => true).catch(() => false);
+      const newExists = await fs.access(newP).then(() => true).catch(() => false);
+      if (exists && !newExists) {
+        await fs.rename(oldP, newP);
+      }
+    } catch (e) {}
   }
 }
 

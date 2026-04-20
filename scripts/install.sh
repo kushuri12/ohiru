@@ -17,13 +17,13 @@ echo "Installing @kushuri12/ohiru globally..."
 npm install -g @kushuri12/ohiru
 
 # 3. Setup directories
-echo "Creating hiru directories..."
-mkdir -p ~/.hiru/gateway/sessions
-mkdir -p ~/.hiru/agents
-mkdir -p ~/.hiru/memory/knowledge
+echo "Creating openhiru directories..."
+mkdir -p ~/.openhiru/gateway/sessions
+mkdir -p ~/.openhiru/agents
+mkdir -p ~/.openhiru/memory/knowledge
 
 # 4. Run wizard
 echo "Starting setup wizard..."
-hiru --setup
+openhiru --setup
 
-echo "✅ O-Hiru installed successfully! Run 'hiru' to begin."
+echo "✅ O-Hiru installed successfully! Run 'openhiru' to begin."

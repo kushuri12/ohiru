@@ -1,4 +1,4 @@
-# COMPLETION REPORT — HIRU OPENCLAW UPGRADE (v1.0.0 — OVERPOWERED)
+# COMPLETION REPORT — OPENHIRU UPGRADE (v1.1.0 — OVERPOWERED)
 
 The mission to elevate O-Hiru to parity with OpenClaw and beyond has been **SUCCESSFULLY EXECUTED**. The system architecture has been transformed from a single-channel bot into a multi-agent, multi-channel autonomous engineering ecosystem.
 
@@ -38,7 +38,7 @@ The `packages/voice/` and `packages/canvas/` modules give Hiru "senses".
 The flat `.hiru` directory has been upgraded to a cognitive storage system:
 - **Layer 1 (Knowledge Graph):** Categorized entity storage for long-term fact retention.
 - **Layer 2 (Daily Notes):** Journaling of every user interaction.
-- **Layer 3 (Summary):** Distilled `HIRU.md` for high-level core persona and project context.
+- **Layer 3 (Summary):** Distilled `OPENHIRU.md` for high-level core persona and project context.
 
 ### 5. Proactive Intelligence
 - **ReAct Engine:** Hiru now Reasons and Acts in loops, avoiding one-shot failures.
@@ -50,11 +50,11 @@ The flat `.hiru` directory has been upgraded to a cognitive storage system:
 
 | Command | Description |
 | :--- | :--- |
-| `hiru gateway start` | Start the WebSocket control plane |
-| `hiru dashboard start` | Start the Web visual dashboard (port 3792) |
-| `hiru doctor` | Perform a 12-point health check on the whole system |
-| `hiru agents list` | Manage multiple autonomous agent identities |
-| `hiru memory distill` | Manually trigger the LLM to compress recent notes |
+| `openhiru gateway start` | Start the WebSocket control plane |
+| `openhiru dashboard start` | Start the Web visual dashboard (port 3792) |
+| `openhiru doctor` | Perform a 12-point health check on the whole system |
+| `openhiru agents list` | Manage multiple autonomous agent identities |
+| `openhiru memory distill` | Manually trigger the LLM to compress recent notes |
 
 ## 📦 SETUP & DEPLOYMENT
 
@@ -71,8 +71,8 @@ Use the new one-command installers:
 - **Windows:** `hiru-install.ps1` (included in `scripts/`)
 
 ## ⚠️ BREAKING CHANGES
-1. **Config Schema:** Automatically migrated upon first run of `hiru doctor` or `hiru`.
-2. **Pathing:** All agent files now default to `~/.hiru/` for better multi-user/multi-agent support.
+1. **Config Schema:** Automatically migrated upon first run of `openhiru doctor` or `openhiru`.
+2. **Pathing:** All agent files now default to `~/.openhiru/` for better multi-user/multi-agent support.
 
 ---
 **Hiru is now the most powerful autonomous assistant in your arsenal.**

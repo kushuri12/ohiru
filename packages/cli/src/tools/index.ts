@@ -58,9 +58,9 @@ export const readFileTool: any = {
       const stats = await fs.stat(absolutePath).catch(() => null);
       if (!stats) return `Error: File not found at ${fPath}`;
 
-      // Security check (Allow reading from CWD or ~/.hiru)
+      // Security check (Allow reading from CWD or ~/.openhiru)
       if (!isSafePath(absolutePath)) {
-        return `Error: Permission denied for reading path: ${fPath}. You can only read within the project directory or ~/.hiru/`;
+        return `Error: Permission denied for reading path: ${fPath}. You can only read within the project directory or ~/.openhiru/`;
       }
 
       if (stats.isDirectory()) return `Error: ${fPath} is a directory. Use list_files to see its content.`;
@@ -131,9 +131,9 @@ Example: { "path": "src/index.html", "content": "<html>..." }`,
 
     const absolutePath = resolveSafePath(fPath);
     
-    // Security check (Allow writing to CWD or ~/.hiru)
+    // Security check (Allow writing to CWD or ~/.openhiru)
     if (!isSafePath(absolutePath)) {
-      throw new Error(`write_file: permission denied for path: ${fPath}. You can only write within the project directory or ~/.hiru/file/`);
+      throw new Error(`write_file: permission denied for path: ${fPath}. You can only write within the project directory or ~/.openhiru/file/`);
     }
 
     try {
@@ -172,7 +172,7 @@ IMPORTANT: Use this instead of rewrite_file for small changes. Provide exact lin
 
       // Security check
       if (!isSafePath(absolutePath)) {
-        throw new Error(`edit_file: permission denied for path: ${fPath}. You can only edit within the project directory or ~/.hiru/`);
+        throw new Error(`edit_file: permission denied for path: ${fPath}. You can only edit within the project directory or ~/.openhiru/`);
       }
 
       const content = await fs.readFile(absolutePath, "utf8");
@@ -238,7 +238,7 @@ export const listFilesTool: any = {
       
       // Security check
       if (!isSafePath(p)) {
-        return `Error: Permission denied for listing path: ${dPath}. You can only list within the project directory or ~/.hiru/`;
+        return `Error: Permission denied for listing path: ${dPath}. You can only list within the project directory or ~/.openhiru/`;
       }
 
       const entries = await fs.readdir(p, { recursive });
@@ -445,7 +445,7 @@ export const searchFilesTool: any = {
 
     // Security check
     if (!isSafePath(resolvedSearchPath)) {
-      return `Error: Permission denied for searching path: ${searchPath}. You can only search within the project directory or ~/.hiru/`;
+      return `Error: Permission denied for searching path: ${searchPath}. You can only search within the project directory or ~/.openhiru/`;
     }
 
     // Coba ripgrep dulu, fallback ke grep

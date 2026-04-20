@@ -15,10 +15,10 @@ export interface ErrorPattern {
 
 export class ErrorPatternLibrary {
   private patterns: ErrorPattern[] = [];
-  private readonly persistPath: string; // ~/.hiru/error-patterns.json
-
+  private readonly persistPath: string; // ~/.openhiru/error-patterns.json
+  
   constructor() {
-    this.persistPath = path.join(os.homedir(), ".hiru", "error-patterns.json");
+    this.persistPath = path.join(os.homedir(), ".openhiru", "error-patterns.json");
 
     // Seed with built-in patterns
     this.patterns = [

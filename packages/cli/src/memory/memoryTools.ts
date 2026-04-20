@@ -4,7 +4,7 @@ import { GlobalMemory, GlobalMemoryData } from "./GlobalMemory.js";
 export function createMemoryTools(memory: GlobalMemory) {
     return {
         manage_memory: {
-            description: `Manage Hiru's Long-Term Memory to remember important facts cross-session.
+            description: `Manage OpenHiru's Long-Term Memory to remember important facts cross-session.
 You can:
 - "add_fact": Remember something important about the user (e.g. "User lives in Bali", "User likes dark mode")
 - "remove_fact": Forget a specific fact by index
@@ -14,7 +14,10 @@ You can:
 
 You MUST use this anytime the user shares personal details, preferences, or important global rules they want you to remember across all projects forever.`,
             parameters: z.object({
-                action: z.enum(["add_fact", "remove_fact", "set_pref", "remove_pref", "list", "set_identity", "get_all", "show"]),
+                action: z.enum([
+                    "add_fact", "remove_fact", "set_pref", "remove_pref", "list", "set_identity", "get_all", "show",
+                    "tambah_fakta", "hapus_fakta", "simpan_pref", "hapus_pref", "lihat", "tambah", "simpan"
+                ]),
                 fact: z.string().optional().describe("Fact text to store (for add_fact)"),
                 index: z.number().optional().describe("Index of fact to remove (for remove_fact)"),
                 key: z.string().optional().describe("Preference key (for set/remove_pref)"),
@@ -27,10 +30,12 @@ You MUST use this anytime the user shares personal details, preferences, or impo
                     case "setidentity":
                         if (!args.value) return "Error: 'value' (identity text) required";
                         await memory.setIdentity(args.value);
-                        return `✨ Identity updated. Hiru now knows who they are.`;
+                        return `✨ Identity updated. OpenHiru now knows who they are.`;
                     case "add_fact":
                     case "addfact":
                     case "add":
+                    case "tambah_fakta":
+                    case "tambah":
                         if (!args.fact) return "Error: 'fact' text required";
                         await memory.addFact(args.fact);
                         return `✅ Fact saved: "${args.fact}"`;
@@ -43,21 +48,36 @@ You MUST use this anytime the user shares personal details, preferences, or impo
                     case "set_pref":
                     case "setpref":
                     case "pref":
-                        if (!args.key || !args.value) return "Error: 'key' and 'value' required";
+                    case "simpan_pref":
+                    case "simpan":
+                        if (!args.key || !args.value) return "Error: 'key' and 'value' required for set_pref";
                         await memory.setPreference(args.key, args.value);
                         return `✅ Preference saved: ${args.key}=${args.value}`;
                     case "remove_pref":
                     case "removepref":
                     case "delete_pref":
-                        if (!args.key) return "Error: 'key' required";
+                    case "hapus_pref":
+                        if (!args.key) return "Error: 'key' required for remove_pref";
                         await memory.deletePreference(args.key);
                         return `✅ Preference removed: ${args.key}`;
                     case "list":
                     case "get_all":
                     case "show":
                     case "get":
+                    case "lihat":
                         return JSON.stringify(memory.getData(), null, 2);
                     default:
+                        // Fallback logic for when Zod enum might have been bypassed or updated
+                        if (action.includes("add") || action.includes("tambah")) {
+                             if (!args.fact) return "Error: 'fact' text required";
+                             await memory.addFact(args.fact!);
+                             return `✅ Fact saved: "${args.fact}"`;
+                        }
+                        if (action.includes("save") || action.includes("simpan") || action.includes("pref")) {
+                             if (!args.key || !args.value) return "Error: 'key' and 'value' required";
+                             await memory.setPreference(args.key!, args.value!);
+                             return `✅ Preference saved: ${args.key}=${args.value}`;
+                        }
                         return `Error: Unknown action "${args.action}". Available: add_fact, set_pref, list, remove_fact, etc.`;
                 }
             }

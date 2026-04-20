@@ -22,7 +22,7 @@ import { printStartupBanner, printCompactHeader, divider, statusLine } from "./u
 
 import ora from "ora";
 
-export const version_cli = "1.0.0";
+export const version_cli = "1.1.0";
 
 async function main() {
   await ensureHiruDirs();
@@ -35,7 +35,7 @@ async function main() {
 
   // ── version ──────────────────────────────────────────────────────────────
   if (isVersion) {
-    console.log(`hiru v${version_cli}`);
+    console.log(`openhiru v${version_cli}`);
     process.exit(0);
   }
 
@@ -47,20 +47,20 @@ async function main() {
     const dot  = c.dark("•");
 
     console.log(`  ${c.muted("Commands")}\n`);
-    console.log(`    ${cmd("hiru")}                ${dot} ${chalk.white("Start the Telegram agent")}`);
-    console.log(`    ${cmd("hiru gateway <start|stop>")}  ${dot} ${chalk.white("Manage WebSocket gateway")}`);
-    console.log(`    ${cmd("hiru channels <list|add>")}   ${dot} ${chalk.white("Manage channel adapters")}`);
-    console.log(`    ${cmd("hiru agents <list|add|start>")} ${dot} ${chalk.white("Orchestrate multiple agents")}`);
-    console.log(`    ${cmd("hiru dashboard start")}       ${dot} ${chalk.white("Launch web dashboard")}`);
-    console.log(`    ${cmd("hiru canvas open")}           ${dot} ${chalk.white("Open visual workspace")}`);
-    console.log(`    ${cmd("hiru voice start")}           ${dot} ${chalk.white("Enable wake-word listener")}`);
-    console.log(`    ${cmd("hiru doctor")}                ${dot} ${chalk.white("System health check")}`);
-    console.log(`    ${cmd("hiru memory distill")}        ${dot} ${chalk.white("Compress project knowledge")}`);
-    console.log(`    ${cmd("hiru skill prune")}           ${dot} ${chalk.white("Clean old skill versions")}`);
-    console.log(`    ${cmd("hiru logs --follow")}         ${dot} ${chalk.white("Tail agent logs")}`);
-    console.log(`    ${cmd("hiru --setup")}               ${dot} ${chalk.white("Configure bot credentials")}`);
-    console.log(`    ${cmd("hiru --version")}             ${dot} ${chalk.white("Show version")}`);
-    console.log(`    ${cmd("hiru --help")}                ${dot} ${chalk.white("Show this help menu")}`);
+    console.log(`    ${cmd("openhiru")}                ${dot} ${chalk.white("Start the Telegram agent")}`);
+    console.log(`    ${cmd("openhiru gateway <start|stop>")}  ${dot} ${chalk.white("Manage WebSocket gateway")}`);
+    console.log(`    ${cmd("openhiru channels <list|add>")}   ${dot} ${chalk.white("Manage channel adapters")}`);
+    console.log(`    ${cmd("openhiru agents <list|add|start>")} ${dot} ${chalk.white("Orchestrate multiple agents")}`);
+    console.log(`    ${cmd("openhiru dashboard start")}       ${dot} ${chalk.white("Launch web dashboard")}`);
+    console.log(`    ${cmd("openhiru canvas open")}           ${dot} ${chalk.white("Open visual workspace")}`);
+    console.log(`    ${cmd("openhiru voice start")}           ${dot} ${chalk.white("Enable wake-word listener")}`);
+    console.log(`    ${cmd("openhiru doctor")}                ${dot} ${chalk.white("System health check")}`);
+    console.log(`    ${cmd("openhiru memory distill")}        ${dot} ${chalk.white("Compress project knowledge")}`);
+    console.log(`    ${cmd("openhiru skill prune")}           ${dot} ${chalk.white("Clean old skill versions")}`);
+    console.log(`    ${cmd("openhiru logs --follow")}         ${dot} ${chalk.white("Tail agent logs")}`);
+    console.log(`    ${cmd("openhiru --setup")}               ${dot} ${chalk.white("Configure bot credentials")}`);
+    console.log(`    ${cmd("openhiru --version")}             ${dot} ${chalk.white("Show version")}`);
+    console.log(`    ${cmd("openhiru --help")}                ${dot} ${chalk.white("Show this help menu")}`);
     console.log("");
     process.exit(0);
   }
@@ -82,7 +82,7 @@ async function main() {
   // ── must have telegram creds ──────────────────────────────────────────────
   if (!config.telegramBotToken || !config.telegramAllowedChatId) {
     console.log(`  ${c.muted("⚠️")}  ${c.muted("Telegram bot is not configured.")}`);
-    console.log(chalk.dim("     Run: ") + c.light("hiru --setup\n"));
+    console.log(chalk.dim("     Run: ") + c.light("openhiru --setup\n"));
     process.exit(1);
   }
 
@@ -141,7 +141,7 @@ async function main() {
           const distiller = new MemoryDistiller({ chat: async () => "Summary" } as any);
           await distiller.distill();
       } else {
-          console.log("Usage: hiru memory <show|add|clear|distill> [text]");
+          console.log("Usage: openhiru memory <show|add|clear|distill> [text]");
       }
       process.exit(0);
     } else if (cmd === "sessions") {
@@ -165,7 +165,7 @@ async function main() {
             console.log(chalk.green("✓ All sessions cleared."));
          }
       } else {
-        console.log("Usage: hiru sessions <list|clear>");
+        console.log("Usage: openhiru sessions <list|clear>");
       }
       process.exit(0);
     } else if (cmd === "skill") {
@@ -215,7 +215,7 @@ async function main() {
            console.log(chalk.dim(`     files: ${result.deleted.join(", ")}`));
          }
       } else {
-        console.log("Usage: hiru skill <list|create|delete|test|prune> [name] [json_args] [--dry-run]");
+        console.log("Usage: openhiru skill <list|create|delete|test|prune> [name] [json_args] [--dry-run]");
       }
       process.exit(0);
     } else if (cmd === "plugin") {
@@ -260,7 +260,7 @@ async function main() {
           console.log("");
         }
       } else {
-        console.log(`  ${c.muted("Usage:")} hiru plugin <install|uninstall|update|enable|disable|list> [target]`);
+        console.log(`  ${c.muted("Usage:")} openhiru plugin <install|uninstall|update|enable|disable|list> [target]`);
       }
       process.exit(0);
     } else if (cmd === "gateway") {
@@ -322,7 +322,7 @@ async function main() {
       console.log(chalk.green(`✓ RAM limit set to ${num}MB permanently.`));
       process.exit(0);
     } else {
-      console.log(`  ${c.muted("⚠️")}  ${c.muted(`Unknown command '${cmd}'. Use`)} ${c.light("hiru --help")} ${c.muted("for usage information.")}`);
+      console.log(`  ${c.muted("⚠️")}  ${c.muted(`Unknown command '${cmd}'. Use`)} ${c.light("openhiru --help")} ${c.muted("for usage information.")}`);
       process.exit(1);
     }
   }

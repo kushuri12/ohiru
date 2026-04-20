@@ -4,11 +4,11 @@ import { ProjectContext } from "shared";
 import { execa } from "execa";
 
 export async function detectProjectContext(root: string): Promise<ProjectContext> {
-  let hiruMDContent = "";
+  let openHiruMDContent = "";
   try {
-    hiruMDContent = await fs.readFile(path.join(root, "HIRU.md"), "utf-8");
+    openHiruMDContent = await fs.readFile(path.join(root, "OPENHIRU.md"), "utf-8");
   } catch (e) {
-    // HIRU.md does not exist yet
+    // OPENHIRU.md does not exist yet
   }
 
   let packageManager = "npm";
@@ -53,7 +53,7 @@ export async function detectProjectContext(root: string): Promise<ProjectContext
     entrypoint: "unknown",
     gitBranch,
     recentCommits,
-    hiruMDContent,
+    hiruMDContent: openHiruMDContent,
     importantFiles: []
   };
 }

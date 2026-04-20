@@ -45,7 +45,7 @@ export async function runTelegramSetup(config: any): Promise<any> {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: chatId,
-          text: "✅ *Hiru is connected!*\nSend me a command and I will assist you.",
+          text: "✅ *OpenHiru is connected!*\nSend me a command and I will assist you.",
           parse_mode: "Markdown",
         }),
       }
@@ -66,6 +66,6 @@ export async function runTelegramSetup(config: any): Promise<any> {
   const { saveConfig } = await import("../utils/config.js");
   await saveConfig(updated);
 
-  outro(c.green("✨ Setup complete!") + ` ${chalk.white("You can now run: ")}` + c.light("hiru"));
+  outro(c.green("✨ Setup complete!") + ` ${chalk.white("You can now run: ")}` + c.light("openhiru"));
   return updated;
 }

@@ -1,5 +1,5 @@
 services:
-  hiru:
+  openhiru:
     build:
       context: ..
       dockerfile: docker/Dockerfile
@@ -10,9 +10,9 @@ services:
       - "3791:3791"   # Canvas
       - "3792:3792"   # Dashboard
     volumes:
-      - hiru_data:/root/.hiru
+      - openhiru_data:/root/.openhiru
     env_file:
       - .env
 
 volumes:
-  hiru_data:
+  openhiru_data:

@@ -7,7 +7,7 @@ export async function handleDoctorCommand() {
 
   const checks = [
     { name: "Environment", status: "ok", msg: "Node.js v20+, OS: Windows" },
-    { name: "Config Integrity", status: "ok", msg: "Schema matches HiruConfig v3" },
+    { name: "Config Integrity", status: "ok", msg: "Schema matches OpenHiru Config v3" },
     { name: "API Connectivity", status: "warning", msg: "OpenAI is up, Gemini is slow (2.4s)" },
     { name: "Telegram Bot", status: "ok", msg: "Token valid, polling active" },
     { name: "Workspace", status: "ok", msg: "Permissions: Read/Write verified" },
@@ -24,5 +24,5 @@ export async function handleDoctorCommand() {
     console.log(`  ${icon} ${c.light(check.name.padEnd(18))} ${chalk.dim(check.msg)}`);
   }
 
-  console.log(`\n  ${c.muted("Suggestion:")} ${chalk.white("Run")} ${c.light("hiru gateway start")} ${chalk.white("to fix Gateway issues.")}\n`);
+  console.log(`\n  ${c.muted("Suggestion:")} ${chalk.white("Run")} ${c.light("openhiru gateway start")} ${chalk.white("to fix Gateway issues.")}\n`);
 }

@@ -34,10 +34,10 @@ const SECTION_MAX: Record<keyof HiruMDSections, number> = {
 };
 
 /**
- * HiruMDRouter
- * Parses HIRU.md sections and returns only what's needed for this task.
+ * OpenHiruMDRouter
+ * Parses OPENHIRU.md sections and returns only what's needed for this task.
  */
-export class HiruMDRouter {
+export class OpenHiruMDRouter {
   constructor(private hiruMDPath: string) {}
 
   /**
@@ -100,7 +100,7 @@ export class HiruMDRouter {
     const sections = await this.parseSections();
     const needed = SECTION_MAP[category] || SECTION_MAP.full;
 
-    const output: string[] = ["## HIRU.md PROJECT MEMORY"];
+    const output: string[] = ["## OPENHIRU.md PROJECT MEMORY"];
     for (const key of needed) {
       const content = sections[key];
       if (content) {

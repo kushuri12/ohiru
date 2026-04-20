@@ -11,11 +11,11 @@ Write-Host "Installing @kushuri12/ohiru globally..." -ForegroundColor Gray
 npm install -g @kushuri12/ohiru
 
 # 3. Setup directories
-$hiruDir = Join-Path $HOME ".hiru"
+$hiruDir = Join-Path $HOME ".openhiru"
 New-Item -ItemType Directory -Force -Path (Join-Path $hiruDir "gateway\sessions")
 New-Item -ItemType Directory -Force -Path (Join-Path $hiruDir "agents")
 
 # 4. Run wizard
-hiru --setup
+openhiru --setup
 
-Write-Host "✅ O-Hiru installed successfully! Run 'hiru' to begin." -ForegroundColor Green
+Write-Host "✅ O-Hiru installed successfully! Run 'openhiru' to begin." -ForegroundColor Green

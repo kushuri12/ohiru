@@ -11,7 +11,7 @@ const WORDMARK = [
 ];
 
 /**
- * The main startup banner shown when `hiru` starts.
+ * The main startup banner shown when `openhiru` starts.
  * Layout: centered wordmark + info.
  */
 export function printStartupBanner(opts: {
@@ -52,7 +52,7 @@ export function printStartupBanner(opts: {
  */
 export function printCompactHeader(title: string, version: string): void {
   console.log("");
-  console.log(`  ${c.bold("HIRU")} ${chalk.dim("v" + version)} ${chalk.dim("—")} ${c.label(" " + title + " ")}`);
+  console.log(`  ${c.bold("OPENHIRU")} ${chalk.dim("v" + version)} ${chalk.dim("—")} ${c.label(" " + title + " ")}`);
   console.log(c.dark("  " + "─".repeat(50)));
   console.log("");
 }

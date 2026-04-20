@@ -20,7 +20,7 @@
 
 ## 🚀 KEY MODULES
 
-### 🧠 Autonomous Brain (v1.0.0)
+### 🧠 Autonomous Brain (v1.1.0)
 - **ReAct Loop:** Deep multi-step reasoning (Reason + Act) before every execution.
 - **Self-Critique:** Agent audits its own output for errors before reporting.
 - **Context Compressor:** Intelligent summarization so the agent never "forgets" in long threads.
@@ -56,15 +56,15 @@ powershell -c "irm https://o-hiru.ai/install.ps1 | iex"
 
 | Command | Description |
 | :--- | :--- |
-| `hiru` | Launch the main Telegram agent |
-| `hiru gateway start` | Start the WebSocket control plane |
-| `hiru dashboard start` | Open the Web UI dashboard (port 3792) |
-| `hiru doctor` | Run full system health checks |
-| `hiru agents add <id>` | Spawn a new isolated agent instance |
-| `hiru memory distill` | Manually compress project memory |
+| `openhiru` | Launch the main Telegram agent |
+| `openhiru gateway start` | Start the WebSocket control plane |
+| `openhiru dashboard start` | Open the Web UI dashboard (port 3792) |
+| `openhiru doctor` | Run full system health checks |
+| `openhiru agents add <id>` | Spawn a new isolated agent instance |
+| `openhiru memory distill` | Manually compress project memory |
 
 ## 🛡️ CORE AGENT SOUL
 Hiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
 
 ---
-*Developed with ❤️ by Hiru Team. v1.0.0 — OVERPOWERED.*
+*Developed with ❤️ by Hiru Team. v1.1.0 — OVERPOWERED.*

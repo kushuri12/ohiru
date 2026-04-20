@@ -6,7 +6,7 @@ export class DailyNotes {
   private baseDir: string;
 
   constructor(customDir?: string) {
-    this.baseDir = customDir || path.join(os.homedir(), ".hiru", "memory", "notes");
+    this.baseDir = customDir || path.join(os.homedir(), ".openhiru", "memory", "notes");
     fs.ensureDirSync(this.baseDir);
   }
 

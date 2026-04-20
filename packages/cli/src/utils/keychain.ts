@@ -4,7 +4,7 @@ import path from "path";
 import os from "os";
 
 function getConfigPath() {
-  return path.join(os.homedir(), ".hirurc");
+  return path.join(os.homedir(), ".openhirurc");
 }
 
 // Simple obfuscation — NOT encryption, just prevents casual reading
@@ -12,7 +12,7 @@ function encode(s: string): string { return Buffer.from(s).toString("base64"); }
 function decode(s: string): string { return Buffer.from(s, "base64").toString("utf-8"); }
 
 export async function saveApiKeyToKeychain(_providerId: string, _apiKey: string) {
-  // No-op — we now store everything in .hirurc
+  // No-op — we now store everything in .openhirurc
 }
 
 export async function getApiKeyFromKeychain(_providerId: string): Promise<string | null> {
@@ -20,7 +20,7 @@ export async function getApiKeyFromKeychain(_providerId: string): Promise<string
 }
 
 export async function saveGlobalApiKey(_apiKey: string) {
-  // No-op — global key concept is now handled by .hirurc directly
+  // No-op — global key concept is now handled by .openhirurc directly
 }
 
 export async function saveConfig(config: HiruConfig) {
@@ -39,8 +39,8 @@ export async function saveConfig(config: HiruConfig) {
 export async function loadConfig(): Promise<HiruConfig | null> {
   const p = getConfigPath();
 
-  // Also try loading .hiru.env for environment variable overrides
-  const envPath = path.join(os.homedir(), ".hiru.env");
+  // Also try loading .openhiru.env for environment variable overrides
+  const envPath = path.join(os.homedir(), ".openhiru.env");
   try {
     const envRaw = await fs.readFile(envPath, "utf-8");
     envRaw.split("\n").forEach(line => {

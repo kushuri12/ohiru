@@ -264,7 +264,7 @@ export function trimToolDescriptions(tools: Record<string, any>): Record<string,
 // When the task is a simple question or web search, we don't need the full
 // planning/execution/anti-hallucination scaffold. Use a ~100-token prompt instead.
 // ─────────────────────────────────────────────────────────────────────────────
-export const MINIMAL_SYSTEM_PROMPT = `You are Hiru, an OVERPOWERED Autonomous Coding Agent. Match the user's language. Be concise and professional. If asked about your capabilities, mention what's available in your context.`;
+export const MINIMAL_SYSTEM_PROMPT = `You are OpenHiru, an OVERPOWERED Autonomous Coding Agent. Match the user's language. Be concise and professional. If asked about your capabilities, mention what's available in your context.`;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TOKEN ESTIMATOR

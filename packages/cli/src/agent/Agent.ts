@@ -54,7 +54,7 @@ import { HeartbeatManager } from "./Heartbeat.js";
 import { GlobalIntelligence } from "./GlobalIntelligence.js";
 import { SkillVersionManager } from "../skills/SkillVersionManager.js";
 import { TokenBudget } from "./TokenBudget.js";
-import { HiruMDRouter } from "../memory/HiruMDRouter.js";
+import { OpenHiruMDRouter } from "../memory/HiruMDRouter.js";
 import { ToolResultCache } from "../tools/ToolResultCache.js";
 import { ConfidenceChecker } from "./ConfidenceChecker.js";
 import { ErrorPatternLibrary } from "../tools/ErrorHandler.js";
@@ -110,7 +110,7 @@ export class HiruAgent extends EventEmitter {
   
   // Intelligence Upgrades v2
   private tokenBudget: TokenBudget;
-  private memoryRouter: HiruMDRouter;
+  private memoryRouter: OpenHiruMDRouter;
   private resultCache: ToolResultCache;
   private confidenceChecker: ConfidenceChecker;
   private errorLibrary: ErrorPatternLibrary;
@@ -136,7 +136,7 @@ export class HiruAgent extends EventEmitter {
     
     // Intelligence Upgrades v2
     this.tokenBudget = new TokenBudget(config.model);
-    this.memoryRouter = new HiruMDRouter(path.join(os.homedir(), ".hiru", "HIRU.md"));
+    this.memoryRouter = new OpenHiruMDRouter(path.join(os.homedir(), ".openhiru", "OPENHIRU.md"));
     this.resultCache = new ToolResultCache(30000);
     this.confidenceChecker = new ConfidenceChecker();
     this.errorLibrary = new ErrorPatternLibrary();
@@ -194,7 +194,7 @@ export class HiruAgent extends EventEmitter {
           this.config, 
           () => this.ctx // Return the current context at call-time
         );
-        this.tools["hiru"] = hiruSubagentTool;
+        this.tools["openhiru"] = hiruSubagentTool;
 
         // Re-register when skills change
         this.skillManager.on("skillCreated", () => {
@@ -786,7 +786,7 @@ export class HiruAgent extends EventEmitter {
       // Minimalist greeting filter - Only for extremely short greetings to keep response time low.
       // For everything else, let the LLM's brain decide (Planning Phase).
       const inputStr = typeof input === "string" ? input.trim() : "";
-      const shortGreetings = /^(halo|hello|hi|p|pagi|siang|sore|malam|oi|hey|hiru)$/i;
+      const shortGreetings = /^(halo|hello|hi|p|pagi|siang|sore|malam|oi|hey|openhiru)$/i;
       const isShortGreeting = inputStr && shortGreetings.test(inputStr) && inputStr.split(/\s+/).length < 3;
       
       // Conversational query detector — informational/chat queries that do not require an execution plan.
