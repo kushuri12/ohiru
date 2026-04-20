@@ -368,8 +368,8 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const text = ctx.message.text.toLowerCase().trim();
 
       if (this.pendingPlanResolve || this.pendingPermResolve) {
-        const isYes = ["ya", "y", "yes", "ok", "continue", "sip", "yup", "gas", "boleh", "✅ yes, continue"].some(v => text.includes(v)) || text === "y" || text === "ya";
-        const isNo = ["tidak", "n", "no", "cancel", "stop", "❌ cancel", "gak"].some(v => text.includes(v)) || text === "n" || text === "no";
+        const isYes = ["ya", "y", "yes", "/yes", "ok", "continue", "sip", "yup", "gas", "boleh", "✅ yes, continue"].some(v => text.includes(v)) || text === "y" || text === "ya" || text === "/yes";
+        const isNo = ["tidak", "n", "no", "/no", "cancel", "stop", "❌ cancel", "gak"].some(v => text.includes(v)) || text === "n" || text === "no" || text === "/no";
 
         if (isYes || isNo) {
           if (this.pendingPlanResolve) {
@@ -718,7 +718,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const planText = this.formatter.formatPlan(plan);
       await this.sendText(planText);
       this.pendingPlanResolve = (v: boolean) => this.agent.resolvePlanApproval(v);
-      await this.bot.api.sendMessage(this.currentChatId, "📋 *Is this plan correct?*\nReply 'Yes' to continue, or 'No' to cancel.", {
+      await this.bot.api.sendMessage(this.currentChatId, "📋 *Is this plan correct?*\nReply /yes to continue, or /no to cancel.", {
         parse_mode: "Markdown"
       });
     });
@@ -736,7 +736,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         `🛡️ *Permission Required*\n\n` +
         `${emoji} *Tool:* \`${req.toolName}\`\n` +
         `📦 *Args:* \`${argStr}\`\n\n` +
-        `Allow this action?\nReply 'Yes' to allow, or 'No' to deny.`, 
+        `Allow this action?\nReply /yes to allow, or /no to deny.`, 
         { 
           parse_mode: "Markdown"
         }

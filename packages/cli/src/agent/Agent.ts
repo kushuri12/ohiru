@@ -960,7 +960,7 @@ export class HiruAgent extends EventEmitter {
       }
 
       const lastMsg = this.messages[this.messages.length - 2];
-      const isApproval = typeof input === "string" && /^(y|yes|proceed|do it|kerjakan|go|ok|lanjut|sip|yup|gas)$/i.test(input.trim());
+      const isApproval = typeof input === "string" && /^(y|yes|\/yes|proceed|do it|kerjakan|go|ok|lanjut|sip|yup|gas)$/i.test(input.trim());
       
       if (isApproval && lastMsg && typeof lastMsg.content === "string" && lastMsg.content.includes("</plan>")) {
         const planPart = lastMsg.content.split("<plan>")[1];
