@@ -461,16 +461,19 @@ export class SimpleTUI {
           this.scheduleRender();
           return;
         }
-        this.isSettingsOpen = true;
         this.settingsIndex = 0;
         this.settingsView = "main";
+        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Enable mouse
         this.scheduleRender();
         return;
       }
 
       if (this.isSettingsOpen) {
         // Fast-path for typing: don't debounce character inputs
-        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !str.includes(";");
+        // Filter out mouse-reporting trash (numeric sequences ending in M/m or containing semicolons)
+        const isMouseTrash = /^[0-9;]+[Mm]$/.test(str) || (str && str.includes(";"));
+        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !isMouseTrash;
+        
         if (isTypeable || !this.isProcessingKey) {
           if (!isTypeable) this.isProcessingKey = true;
           this.handleSettingsKey(key, str).finally(() => {
@@ -584,20 +587,22 @@ export class SimpleTUI {
           this.success(`Model set to ${this.tempInput}`, "settings");
         }
         this.settingsView = "main";
+        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Re-enable mouse
         this.settingsIndex = this.inputField.includes("API Key") ? 2 : 1;
         this.scheduleRender();
         return;
       }
       if (key.name === "escape") {
         this.settingsView = "main";
+        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Re-enable mouse
         this.scheduleRender();
         return;
       }
       if (key.name === "backspace") {
         this.tempInput = this.tempInput.slice(0, -1);
-      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !str.includes(";")) {
-        // Handle both single characters and pasted strings
-        this.tempInput += str;
+      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b")) {
+        const isMouseTrash = /^[0-9;]+[Mm]$/.test(str) || str.includes(";");
+        if (!isMouseTrash) this.tempInput += str;
       }
       this.scheduleRender();
       return;
@@ -684,6 +689,7 @@ export class SimpleTUI {
         }
         else if (this.settingsIndex === 4) {
           this.settingsView = "input";
+          process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
           this.inputField = "Enter API Key:";
           this.inputTarget = "";
           this.tempInput = this.config.apiKeys?.[this.config.provider] || this.config.apiKey || "";
@@ -701,6 +707,7 @@ export class SimpleTUI {
           const field = fields[this.settingsIndex];
           if (field) {
             this.settingsView = "input";
+            process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
             this.inputField = `Enter ${field.label}:`;
             this.inputTarget = field.key;
             this.tempInput = field.value || "";
@@ -744,6 +751,7 @@ export class SimpleTUI {
         if (idx === allModels.length - 1) {
           // "Add Custom Model..." selected
           this.settingsView = "input";
+          process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
           this.inputField = "Enter Model ID (e.g. gpt-4o):";
           this.tempInput = "";
         } else {
