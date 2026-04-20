@@ -16,7 +16,7 @@
 
 ## ⚡ WHAT IS O-HIRU?
 
-**O-Hiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Inspired by OpenClaw but evolved for maximum performance, Hiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
+**OpenHiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Inspired by OpenClaw but evolved for maximum performance, OpenHiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
 
 ## 🚀 KEY MODULES
 
@@ -27,7 +27,7 @@
 - **Heartbeat:** Runs every 30 mins to check your project status, monitor for errors, and suggest fixes.
 
 ### 🌐 Multi-Channel Gateway
-Hiru isn't just a bot; it's a **Nervous System**. Connect via:
+OpenHiru isn't just a bot; it's a **Nervous System**. Connect via:
 - **Major:** Telegram, Discord, Slack, WhatsApp Web
 - **Privacy:** Signal, Matrix (E2EE), IRC, Email
 - **Direct:** WebChat Widget, CLI-Chat, Ntfy
@@ -35,21 +35,21 @@ Hiru isn't just a bot; it's a **Nervous System**. Connect via:
 ### 💾 3-Layer Memory System
 1. **Knowledge Graph:** Categorized facts about you, your project, and your preferences (`.md` files).
 2. **Daily Notes:** Automated daily logging of every action and decision.
-3. **Persistent Summary:** A master `HIRU.md` file that distills long-term wisdom from history.
+3. **Persistent Summary:** A master `OPENHIRU.md` file that distills long-term wisdom from history.
 
 ### 🎙️ Voice & Vision
-- **TTS/STT:** Talk to Hiru natively via OpenAI Whisper, ElevenLabs, or local engines.
-- **Wake Word:** Responds to "Hey Hiru" immediately.
+- **TTS/STT:** Talk to OpenHiru natively via OpenAI Whisper, ElevenLabs, or local engines.
+- **Wake Word:** Responds to "Hey OpenHiru" immediately.
 - **Canvas:** A live visual workspace where the agent renders charts, code diagrams, and UI mocks.
 
 ## 🛠️ INSTALLATION
 
 ```bash
 # One-command install for Linux/macOS
-curl -fsSL https://o-hiru.ai/install.sh | bash
+curl -fsSL https://ohiru.vercel.app/install.sh | bash
 
 # One-command install for Windows
-powershell -c "irm https://o-hiru.ai/install.ps1 | iex"
+powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
 ```
 
 ## 📖 CLI COMMANDS
@@ -64,7 +64,7 @@ powershell -c "irm https://o-hiru.ai/install.ps1 | iex"
 | `openhiru memory distill` | Manually compress project memory |
 
 ## 🛡️ CORE AGENT SOUL
-Hiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
+OpenHiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
 
 ---
-*Developed with ❤️ by Hiru Team. v1.1.0 — OVERPOWERED.*
+*Developed with ❤️ by OpenHiru Team. v1.1.0 — OVERPOWERED.*
