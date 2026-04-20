@@ -53,9 +53,10 @@ export class SkillVersionManager {
       // Sort descending by version, prefer code files over metadata on ties.
       versions.sort((a, b) => {
         if (b.version !== a.version) return b.version - a.version;
+        // Priority: .json (0) > others (1). Use a.ext === ".json" ? -1 : 0 to sort .json first.
         const aPriority = a.ext === ".json" ? 0 : 1;
         const bPriority = b.ext === ".json" ? 0 : 1;
-        return bPriority - aPriority;
+        return aPriority - bPriority; // Ascending: 0 comes before 1
       });
       latestResult.set(base, versions[0].path);
     }

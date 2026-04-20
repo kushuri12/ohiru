@@ -39,8 +39,8 @@ export class AgentOrchestrator {
     const raw = await fs.readFile(configPath, "utf8");
     const config = AgentConfigSchema.parse(yaml.parse(raw));
 
-    const sandbox = new AgentSandbox(config);
-    const agent = new AgentClass(config, sandbox);
+    const sandbox = new AgentSandbox(id, { mode: "host" });
+    const agent = new AgentClass(id, sandbox);
     
     this.activeAgents.set(id, agent);
     return agent;

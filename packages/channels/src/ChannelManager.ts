@@ -13,6 +13,17 @@ import { NtfyAdapter } from "./ntfy/NtfyAdapter.js";
 import { EmailAdapter } from "./email/EmailAdapter.js";
 import { CliChatAdapter } from "./cli-chat/CliChatAdapter.js";
 import { DiscordWebhookAdapter } from "./discord/webhook/DiscordWebhookAdapter.js";
+import { TelegramAdapter } from "./telegram/TelegramAdapter.js";
+import { LINEAdapter } from "./line/LINEAdapter.js";
+import { MicrosoftTeamsAdapter } from "./teams/MicrosoftTeamsAdapter.js";
+import { MattermostAdapter } from "./mattermost/MattermostAdapter.js";
+import { NostrAdapter } from "./nostr/NostrAdapter.js";
+import { WeChatAdapter } from "./wechat/WeChatAdapter.js";
+import { QQAdapter } from "./qq/QQAdapter.js";
+import { ZaloAdapter } from "./zalo/ZaloAdapter.js";
+import { IMessageAdapter } from "./imessage/IMessageAdapter.js";
+import { FeishuAdapter } from "./feishu/FeishuAdapter.js";
+import { TwitchAdapter } from "./twitch/TwitchAdapter.js";
 import chalk from "chalk";
 
 export class ChannelManager extends EventEmitter {

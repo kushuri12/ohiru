@@ -19,27 +19,36 @@ export const PROVIDERS: ProviderDef[] = [
     apiKeyUrl: "https://console.anthropic.com/settings/keys",
     supportsCustomModel: false,
     needsBaseUrl: false,
-    models: [
-      {
-        id: "claude-3-5-sonnet-latest",
-        label: "Claude Sonnet 3.5",
-        contextWindow: 200_000,
-        maxOutput: 8192,
-        inputPricePerM: 3.00,
-        outputPricePerM: 15.00,
-        capabilities: ["streaming", "tool_use", "vision", "long_context"],
-        recommended: true,
-      },
-      {
-        id: "claude-3-haiku-20240307",
-        label: "Claude 3 Haiku",
-        contextWindow: 200_000,
-        maxOutput: 4096,
-        inputPricePerM: 0.25,
-        outputPricePerM: 1.25,
-        capabilities: ["streaming", "tool_use", "vision", "fast"],
-      },
-    ],
+models: [
+       {
+         id: "claude-3-5-sonnet-latest",
+         label: "Claude Sonnet 3.5",
+         contextWindow: 200_000,
+         maxOutput: 8192,
+         inputPricePerM: 3.00,
+         outputPricePerM: 15.00,
+         capabilities: ["streaming", "tool_use", "vision", "long_context"],
+         recommended: true,
+       },
+       {
+         id: "claude-3-5-haiku-latest",
+         label: "Claude Haiku 3.5",
+         contextWindow: 200_000,
+         maxOutput: 8192,
+         inputPricePerM: 0.80,
+         outputPricePerM: 4.00,
+         capabilities: ["streaming", "tool_use", "vision", "fast"],
+       },
+       {
+         id: "claude-3-haiku-20240307",
+         label: "Claude 3 Haiku",
+         contextWindow: 200_000,
+         maxOutput: 4096,
+         inputPricePerM: 0.25,
+         outputPricePerM: 1.25,
+         capabilities: ["streaming", "tool_use", "vision", "fast"],
+       },
+     ],
   },
   {
     id: "openai",
@@ -51,18 +60,27 @@ export const PROVIDERS: ProviderDef[] = [
     apiKeyUrl: "https://platform.openai.com/api-keys",
     supportsCustomModel: true,
     needsBaseUrl: false,
-    models: [
-      {
-        id: "gpt-4o",
-        label: "GPT-4o",
-        contextWindow: 128_000,
-        maxOutput: 16_384,
-        inputPricePerM: 2.50,
-        outputPricePerM: 10.00,
-        capabilities: ["streaming", "tool_use", "vision"],
-        recommended: true,
-      },
-      {
+models: [
+       {
+         id: "gpt-4o",
+         label: "GPT-4o",
+         contextWindow: 128_000,
+         maxOutput: 16_384,
+         inputPricePerM: 2.50,
+         outputPricePerM: 10.00,
+         capabilities: ["streaming", "tool_use", "vision"],
+         recommended: true,
+       },
+       {
+         id: "gpt-4o-mini",
+         label: "GPT-4o Mini",
+         contextWindow: 128_000,
+         maxOutput: 16_384,
+         inputPricePerM: 0.15,
+         outputPricePerM: 0.60,
+         capabilities: ["streaming", "tool_use", "vision", "fast"],
+       },
+       {
          id: "o3-mini",
          label: "o3-mini",
          contextWindow: 200_000,
@@ -70,8 +88,53 @@ export const PROVIDERS: ProviderDef[] = [
          inputPricePerM: 1.10,
          outputPricePerM: 4.40,
          capabilities: ["streaming", "tool_use", "reasoning", "fast"],
-      },
-    ],
+       },
+       {
+         id: "o1-preview",
+         label: "o1 Preview",
+         contextWindow: 128_000,
+         maxOutput: 32_768,
+         inputPricePerM: 15.00,
+         outputPricePerM: 60.00,
+         capabilities: ["streaming", "tool_use", "reasoning"],
+       },
+       {
+         id: "o1-mini",
+         label: "o1 Mini",
+         contextWindow: 128_000,
+         maxOutput: 65_536,
+         inputPricePerM: 3.00,
+         outputPricePerM: 12.00,
+         capabilities: ["streaming", "tool_use", "reasoning", "fast"],
+       },
+       {
+         id: "gpt-4-turbo",
+         label: "GPT-4 Turbo",
+         contextWindow: 128_000,
+         maxOutput: 4096,
+         inputPricePerM: 10.00,
+         outputPricePerM: 30.00,
+         capabilities: ["streaming", "tool_use", "vision"],
+       },
+       {
+         id: "gpt-4",
+         label: "GPT-4",
+         contextWindow: 8_192,
+         maxOutput: 4096,
+         inputPricePerM: 30.00,
+         outputPricePerM: 60.00,
+         capabilities: ["streaming", "tool_use"],
+       },
+       {
+         id: "gpt-3.5-turbo",
+         label: "GPT-3.5 Turbo",
+         contextWindow: 16_385,
+         maxOutput: 4096,
+         inputPricePerM: 0.50,
+         outputPricePerM: 1.50,
+         capabilities: ["streaming", "tool_use", "fast"],
+       },
+     ],
   },
   {
     id: "google",
@@ -83,18 +146,45 @@ export const PROVIDERS: ProviderDef[] = [
     apiKeyUrl: "https://aistudio.google.com/app/apikey",
     supportsCustomModel: false,
     needsBaseUrl: false,
-    models: [
-      {
-        id: "gemini-2.5-pro",
-        label: "Gemini 2.5 Pro",
-        contextWindow: 1_048_576,
-        maxOutput: 8192,
-        inputPricePerM: 1.25,
-        outputPricePerM: 10.00,
-        capabilities: ["streaming", "tool_use", "vision", "long_context", "reasoning"],
-        recommended: true,
-      },
-    ],
+models: [
+       {
+         id: "gemini-2.5-pro",
+         label: "Gemini 2.5 Pro",
+         contextWindow: 1_048_576,
+         maxOutput: 8192,
+         inputPricePerM: 1.25,
+         outputPricePerM: 10.00,
+         capabilities: ["streaming", "tool_use", "vision", "long_context", "reasoning"],
+         recommended: true,
+       },
+       {
+         id: "gemini-2.0-flash",
+         label: "Gemini 2.0 Flash",
+         contextWindow: 1_048_576,
+         maxOutput: 8192,
+         inputPricePerM: 0.00,
+         outputPricePerM: 0.00,
+         capabilities: ["streaming", "tool_use", "vision", "fast", "free"],
+       },
+       {
+         id: "gemini-1.5-flash",
+         label: "Gemini 1.5 Flash",
+         contextWindow: 1_048_576,
+         maxOutput: 8192,
+         inputPricePerM: 0.075,
+         outputPricePerM: 0.30,
+         capabilities: ["streaming", "tool_use", "vision", "long_context", "fast"],
+       },
+       {
+         id: "gemini-1.5-pro",
+         label: "Gemini 1.5 Pro",
+         contextWindow: 2_097_152,
+         maxOutput: 8192,
+         inputPricePerM: 1.25,
+         outputPricePerM: 5.00,
+         capabilities: ["streaming", "tool_use", "vision", "long_context"],
+       },
+     ],
   },
   {
     id: "groq",
@@ -106,18 +196,45 @@ export const PROVIDERS: ProviderDef[] = [
     apiKeyUrl: "https://console.groq.com/keys",
     supportsCustomModel: false,
     needsBaseUrl: false,
-    models: [
-      {
-        id: "llama-3.3-70b-versatile",
-        label: "Llama 3.3 70B",
-        contextWindow: 128_000,
-        maxOutput: 32_768,
-        inputPricePerM: 0.59,
-        outputPricePerM: 0.79,
-        capabilities: ["streaming", "tool_use", "fast"],
-        recommended: true,
-      },
-    ],
+models: [
+       {
+         id: "llama-3.3-70b-versatile",
+         label: "Llama 3.3 70B",
+         contextWindow: 128_000,
+         maxOutput: 32_768,
+         inputPricePerM: 0.59,
+         outputPricePerM: 0.79,
+         capabilities: ["streaming", "tool_use", "fast"],
+         recommended: true,
+       },
+       {
+         id: "llama-3.1-70b-versatile",
+         label: "Llama 3.1 70B",
+         contextWindow: 128_000,
+         maxOutput: 32_768,
+         inputPricePerM: 0.70,
+         outputPricePerM: 0.90,
+         capabilities: ["streaming", "tool_use", "fast"],
+       },
+       {
+         id: "mixtral-8x7b-32768",
+         label: "Mixtral 8x7B",
+         contextWindow: 32_768,
+         maxOutput: 32_768,
+         inputPricePerM: 0.24,
+         outputPricePerM: 0.24,
+         capabilities: ["streaming", "tool_use", "fast"],
+       },
+       {
+         id: "llama3-70b-8192",
+         label: "Llama 3 70B",
+         contextWindow: 8_192,
+         maxOutput: 8_192,
+         inputPricePerM: 0.65,
+         outputPricePerM: 2.75,
+         capabilities: ["streaming", "tool_use"],
+       },
+     ],
   },
   {
     id: "mistral",
@@ -162,6 +279,24 @@ export const PROVIDERS: ProviderDef[] = [
         outputPricePerM: 10.00,
         capabilities: ["streaming", "tool_use"],
         recommended: true,
+      },
+      {
+        id: "command-r",
+        label: "Command R",
+        contextWindow: 128_000,
+        maxOutput: 4_000,
+        inputPricePerM: 0.30,
+        outputPricePerM: 1.00,
+        capabilities: ["streaming", "tool_use", "fast"],
+      },
+      {
+        id: "command-r7b-langchain-instruct",
+        label: "Command R 7B",
+        contextWindow: 128_000,
+        maxOutput: 4_000,
+        inputPricePerM: 0.20,
+        outputPricePerM: 0.60,
+        capabilities: ["streaming", "fast"],
       },
     ],
   },
@@ -209,6 +344,24 @@ export const PROVIDERS: ProviderDef[] = [
         capabilities: ["streaming", "tool_use"],
         recommended: true,
       },
+      {
+        id: "mistral-small-latest",
+        label: "Mistral Small",
+        contextWindow: 128_000,
+        maxOutput: 8_000,
+        inputPricePerM: 0.20,
+        outputPricePerM: 0.60,
+        capabilities: ["streaming", "tool_use", "fast"],
+      },
+      {
+        id: "mistral-tiny",
+        label: "Mistral Tiny",
+        contextWindow: 128_000,
+        maxOutput: 4_096,
+        inputPricePerM: 0.04,
+        outputPricePerM: 0.04,
+        capabilities: ["streaming", "fast"],
+      },
     ],
   },
   {
@@ -221,18 +374,36 @@ export const PROVIDERS: ProviderDef[] = [
     apiKeyUrl: "https://platform.deepseek.com/api_keys",
     supportsCustomModel: false,
     needsBaseUrl: false,
-    models: [
-      {
-        id: "deepseek-chat",
-        label: "DeepSeek V3",
-        contextWindow: 64_000,
-        maxOutput: 8_000,
-        inputPricePerM: 0.27,
-        outputPricePerM: 1.10,
-        capabilities: ["streaming", "tool_use"],
-        recommended: true,
-      },
-    ],
+models: [
+       {
+         id: "deepseek-chat",
+         label: "DeepSeek V3",
+         contextWindow: 64_000,
+         maxOutput: 8_000,
+         inputPricePerM: 0.27,
+         outputPricePerM: 1.10,
+         capabilities: ["streaming", "tool_use"],
+         recommended: true,
+       },
+       {
+         id: "deepseek-coder",
+         label: "DeepSeek Coder V2",
+         contextWindow: 64_000,
+         maxOutput: 8_000,
+         inputPricePerM: 0.27,
+         outputPricePerM: 1.10,
+         capabilities: ["streaming", "tool_use", "coding"],
+       },
+       {
+         id: "deepseek-reasoner",
+         label: "DeepSeek Reasoner",
+         contextWindow: 64_000,
+         maxOutput: 8_000,
+         inputPricePerM: 0.55,
+         outputPricePerM: 2.19,
+         capabilities: ["streaming", "reasoning"],
+       },
+     ],
   },
   {
     id: "ollama",
@@ -313,6 +484,78 @@ export const PROVIDERS: ProviderDef[] = [
         capabilities: ["streaming", "tool_use", "fast"],
         recommended: true,
       },
+      {
+        id: "meta/llama-3.1-405b-instruct",
+        label: "Llama 3.1 405B",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "reasoning"],
+      },
+      {
+        id: "meta/llama-3.1-70b-instruct",
+        label: "Llama 3.1 70B",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "fast"],
+      },
+      {
+        id: "nvidia/llama-3.1-nemotron-70b-instruct",
+        label: "Nemotron 70B",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "tool_use", "fast"],
+      },
+      {
+        id: "nvidia/nemotron-4-340b-instruct",
+        label: "Nemotron 4 340B",
+        contextWindow: 4096,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming"],
+      },
+      {
+        id: "mistralai/mixtral-8x22b-instruct-v0.1",
+        label: "Mixtral 8x22B",
+        contextWindow: 65_536,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "fast"],
+      },
+      {
+        id: "mistralai/mistral-large-2-instruct",
+        label: "Mistral Large 2",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "tool_use"],
+      },
+      {
+        id: "meta/llama-3.2-3b-instruct",
+        label: "Llama 3.2 3B",
+        contextWindow: 128_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "fast"],
+      },
+      {
+        id: "google/gemma-2-27b-instruct",
+        label: "Gemma 2 27B",
+        contextWindow: 8_000,
+        maxOutput: 4096,
+        inputPricePerM: 0,
+        outputPricePerM: 0,
+        capabilities: ["streaming", "fast"],
+      },
     ],
   },
 ];
@@ -326,7 +569,9 @@ export function getProvider(id: string): ProviderDef {
 export function createProviderInstance(config: HiruConfig): any {
   const provider = config.provider?.trim();
   const model = config.model?.trim();
-  let apiKey = config.apiKey?.trim();
+  
+  // Prefer provider-specific key from the new apiKeys map
+  let apiKey = config.apiKeys?.[provider] || config.apiKey?.trim();
 
   // Fallback to env variables if keychain returned nothing
   if (!apiKey || apiKey === "dummy") {
@@ -538,5 +783,52 @@ export async function checkOllamaConnection(baseUrl?: string): Promise<string | 
     }
     return `Ollama connection error: ${e?.message || e}`;
   }
+}
+
+export async function fetchOpenRouterModels(apiKey?: string): Promise<ModelDef[]> {
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 10000);
+    const res = await fetch("https://openrouter.ai/api/v1/models", {
+      signal: controller.signal,
+      headers: apiKey && apiKey !== "dummy" ? { "Authorization": `Bearer ${apiKey}` } : {}
+    });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const data = await res.json();
+    const models: ModelDef[] = (data.data || []).slice(0, 50).map((m: any) => ({
+      id: m.id,
+      label: m.name || m.id,
+      contextWindow: m.context_length || 128_000,
+      maxOutput: m.top_provider?.max_tokens || 4096,
+      inputPricePerM: m.pricing?.input ? parseFloat(m.pricing.input) * 1_000_000 : 0,
+      outputPricePerM: m.pricing?.output ? parseFloat(m.pricing.output) * 1_000_000 : 0,
+      capabilities: ["streaming", "tool_use"],
+    }));
+    return models;
+  } catch {
+    return [];
+  }
+}
+
+export async function fetchOllamaModels(baseUrl?: string): Promise<string[]> {
+  let url = baseUrl?.trim() || "http://localhost:11434";
+  url = url.replace(/\/api\/?$/, "");
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 5000);
+    const res = await fetch(`${url}/api/tags`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return [];
+    const data = await res.json();
+    return (data.models || []).slice(0, 50).map((m: any) => m.name);
+  } catch {
+    return [];
+  }
+}
+
+export function getProviderModels(providerId: string): ModelDef[] {
+  const provider = PROVIDERS.find(p => p.id === providerId);
+  return provider?.models || [];
 }
 

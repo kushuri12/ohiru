@@ -435,7 +435,19 @@ export class HiruAgent extends EventEmitter {
       ]
     };
 
-    const parts = buildSystemPromptParts(ctx, this.globalMemory, skillListProvider, this.activeSnapshot, modularSoul, this.pluginManager, contextOptions);
+    // Get smart-selected tools for this task category
+    const activeTools = this.getSmartTools({ isReadonly: this.currentTaskCategory === "chat" });
+
+    const parts = buildSystemPromptParts(
+      ctx, 
+      this.globalMemory, 
+      skillListProvider, 
+      this.activeSnapshot, 
+      modularSoul, 
+      this.pluginManager, 
+      contextOptions,
+      activeTools
+    );
     
     // Intelligence Upgrades v2: Append routed memory
     const memoryContext = await this.memoryRouter.getRelevantContext(this.currentTaskCategory);

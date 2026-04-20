@@ -6,7 +6,8 @@ export type ProviderCapability =
   | "reasoning"
   | "fast"
   | "local"
-  | "free";
+  | "free"
+  | "coding";
 
 export interface ModelDef {
   id: string;
@@ -56,6 +57,7 @@ export interface HiruConfig {
   provider: string;
   model: string;
   apiKey?: string;
+  apiKeys?: Record<string, string>; // NEW: Store keys for each provider (providerId -> key)
   baseUrl?: string;
   permission: string;
   maxTokens?: number;

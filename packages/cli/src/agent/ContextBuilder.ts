@@ -29,30 +29,50 @@ export class ContextBuilder {
     // Ultra-compact core identity — every token counts
     const instructions = `
 You are Hiru, an OVERPOWERED Autonomous Coding Agent.
-- IMPORTANT PERSONA: You MUST speak in professional English at all times, even if the user speaks Indonesian. Represent yourself as a High-Tier AI.
-- CORE CAPABILITIES: Even if some tools are hidden right now to save tokens, YOU CAN: Execute Shell Commands, Edit/Read Code, Automate Desktop UI, Manage Plugins, Manage Skills, and Search the Web.
-- When asked "what can you do" or "do you have plugins", confidently affirm your Overpowered Developer capabilities and mention your Plugin and Skill systems!
+- IMPORTANT PERSONA: You are a High-Tier AI. Direct, concise, natural language. ALWAYS match the user's language (Indonesian/English).
+- CORE CAPABILITIES: You have advanced tools for: Execute Shell Commands, Edit/Read Code, Automate Desktop UI, Manage Plugins, Manage Skills, and Search the Web.
+- TOOLS FORMAT: Available capabilities and tools are provided below in XML format for your precision. Use them strategically.
 - Follow planning -> execution lifecycle strictly.
 - Minimize filler text. Every token counts.
 - Read files before editing. Verify changes after.
-- Never emit XML tags (<thinking>, <think>, etc.).
+- Never emit XML thinking tags (<thinking>, <think>, etc.) as they are filtered.
 - Be decisive. Commit to first reasonable approach.
 `;
     return this.addSection("CORE", instructions);
-  }
-
-  addLazyEnforcement() {
-    // Merged into core & mode prompts — no separate section needed
-    return this;
   }
 
   addCapabilities() {
     const skills = this.skillManager?.listSkills() || [];
     if (skills.length === 0) return this;
 
-    // Compact: name + one-line description only
-    const list = skills.map((s: any) => `- **${s.name}**: ${s.description}`).join("\n");
-    return this.addSection("SKILLS", list);
+    const list = skills.map((s: any) => 
+      `  <skill name="${s.name}">\n    <description>${s.description}</description>\n  </skill>`
+    ).join("\n");
+    
+    const xml = `<skills>\n${list}\n</skills>`;
+    return this.addSection("SKILLS", xml);
+  }
+
+  /**
+   * Adds all available tools in a structured XML format.
+   * This helps models understand parameters and usage more precisely.
+   */
+  addToolsXML(tools: Record<string, any>) {
+    if (!tools || Object.keys(tools).length === 0) return this;
+    
+    const toolList = Object.entries(tools).map(([name, tool]) => {
+      const t = tool as any;
+      const params = Object.entries(t.parameters?.shape || {}).map(([pName, pDef]: [string, any]) => {
+        const type = pDef?._def?.typeName?.replace("Zod", "").toLowerCase() || "string";
+        const desc = pDef?.description || "";
+        return `      <parameter name="${pName}" type="${type}">${desc}</parameter>`;
+      }).join("\n");
+      
+      return `  <tool name="${name}">\n    <description>${t.description}</description>\n    <parameters>\n${params}\n    </parameters>\n  </tool>`;
+    }).join("\n");
+
+    const xml = `<tools>\n${toolList}\n</tools>`;
+    return this.addSection("AVAILABLE_TOOLS", xml);
   }
 
   addPluginInjections() {
@@ -174,12 +194,17 @@ export function buildSystemPromptParts(
   snapshot?: string,
   modularSoul?: { soul?: string; identity?: string; user?: string },
   pluginManager?: any,
-  options?: ContextBuilderOptions
+  options?: ContextBuilderOptions,
+  tools?: Record<string, any>
 ): PromptPart[] {
-  return new ContextBuilder(ctx, memory, skillManager, snapshot, modularSoul, pluginManager, options)
+  const builder = new ContextBuilder(ctx, memory, skillManager, snapshot, modularSoul, pluginManager, options)
     .addCoreInstructions()
     .addCapabilities()         // Only if skills exist
-    .addPluginInjections()     // Only if plugins exist, now size-limited
+    .addPluginInjections();    // Only if plugins exist
+
+  if (tools) builder.addToolsXML(tools);
+
+  return builder
     .addModularSoul()          // Combined into one section
     .addProjectSnapshot()      // Cached, only if available
     .addProjectContext()       // Only if memory has data
@@ -196,8 +221,9 @@ export function buildSystemPrompt(
   snapshot?: string,
   modularSoul?: { soul?: string; identity?: string; user?: string },
   pluginManager?: any,
-  options?: ContextBuilderOptions
+  options?: ContextBuilderOptions,
+  tools?: Record<string, any>
 ): string {
-  const parts = buildSystemPromptParts(ctx, memory, skillManager, snapshot, modularSoul, pluginManager, options);
+  const parts = buildSystemPromptParts(ctx, memory, skillManager, snapshot, modularSoul, pluginManager, options, tools);
   return parts.map(p => p.text).join("\n");
 }

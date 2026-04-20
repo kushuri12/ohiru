@@ -19,6 +19,7 @@ import { ensureHiruDirs } from "./utils/paths.js";
 import { setupWindowsTerminal } from "./utils/platform.js";
 import { c } from "./ui/theme.js";
 import { printStartupBanner, printCompactHeader, divider, statusLine } from "./ui/banner.js";
+import { SimpleTUI } from "./ui/SimpleTUI.js";
 
 import ora from "ora";
 
@@ -48,6 +49,7 @@ async function main() {
 
     console.log(`  ${c.muted("Commands")}\n`);
     console.log(`    ${cmd("openhiru")}                ${dot} ${chalk.white("Start the Telegram agent")}`);
+    console.log(`    ${cmd("openhiru settings")}           ${dot} ${chalk.white("Open settings popup")}`);
     console.log(`    ${cmd("openhiru gateway <start|stop>")}  ${dot} ${chalk.white("Manage WebSocket gateway")}`);
     console.log(`    ${cmd("openhiru channels <list|add>")}   ${dot} ${chalk.white("Manage channel adapters")}`);
     console.log(`    ${cmd("openhiru agents <list|add|start>")} ${dot} ${chalk.white("Orchestrate multiple agents")}`);
@@ -311,6 +313,15 @@ async function main() {
       const { handleDoctorCommand } = await import("./commands/doctor.js");
       await handleDoctorCommand();
       process.exit(0);
+    } else if (cmd === "settings") {
+      const ui = new SimpleTUI(config);
+      ui.openSettings();
+      ui.onConfigChange = async (newCfg) => {
+          config = newCfg;
+      };
+      // Keep it running for the modal
+      ui.start();
+      return; 
     } else if (cmd === "set-ram") {
       const num = parseInt(subCmd);
       if (isNaN(num)) {
@@ -330,12 +341,23 @@ async function main() {
   // ── start bot ─────────────────────────────────────────────────────────────
   const ctx = await detectProjectContext(process.cwd());
 
-  printStartupBanner({
-    version: version_cli,
-    provider: config.provider,
-    model: config.model,
-    cwd: ctx.root,
-  });
+  const ui = new SimpleTUI(config);
+  
+  // Monkey-patch console to prevent breaking the TUI
+  console.log = (...args) => ui.info(args.join(" ").replace(/\u001b\[[0-9;]*m/g, ""));
+  console.warn = (...args) => ui.warn(args.join(" ").replace(/\u001b\[[0-9;]*m/g, ""));
+  console.error = (...args) => ui.error(args.join(" ").replace(/\u001b\[[0-9;]*m/g, ""));
+  console.info = (...args) => ui.info(args.join(" ").replace(/\u001b\[[0-9;]*m/g, ""));
+
+  ui.setProvider(config.provider);
+  ui.setModel(config.model);
+  ui.onConfigChange = (newCfg) => {
+    agent.updateConfig(newCfg);
+  };
+  ui.start();
+  ui.success("started", "init");
+  ui.info(`cwd: ${ctx.root}`, "init");
+  ui.info("loading skills...", "init");
   
   const sessionId = "telegram-session";
   const { getSession } = await import("./memory/SessionManager.js");
@@ -344,11 +366,11 @@ async function main() {
   await agent.waitReady();
   
   const skillCount = Object.keys((agent as any).tools).filter(k => k.startsWith("skill_")).length;
-  console.log(`  ${c.green("✓")}  ${c.muted("Skills loaded   ")}${chalk.white(skillCount + " high-tier skills")}`);
-  console.log(`  ${c.green("✓")}  ${c.muted("Heartbeat       ")}${chalk.white("Autonomous mode active")}`);
-  console.log(`  ${c.green("✓")}  ${c.muted("Status          ")}${c.light("ONLINE")}`);
-  console.log(c.dark("\n  ─────────────────────────────────────────────────────"));
-  console.log(c.muted("  Press Ctrl+C to terminate · Waiting for messages…\n"));
+  ui.setSkillsCount(skillCount);
+  ui.setStatus("active");
+  ui.success(`loaded ${skillCount} skills`, "skills");
+  ui.success("heartbeat active", "heartbeat");
+  ui.success("ready for messages", "status");
 
   // Start Heartbeat
   const { HeartbeatManager } = await import("./agent/Heartbeat.js");
@@ -364,16 +386,19 @@ async function main() {
   if (existing) {
     agent.messages = JSON.parse(existing.messages);
     agent.tokenUsage = JSON.parse(existing.tokenUsage || '{"prompt":0,"completion":0}');
-    agent.sanitizeMessages(); // Clean up core after restoration
-    console.log(chalk.gray(`  ✓ Restored context footprint (${agent.messages.length} messages).`));
+    agent.sanitizeMessages();
+    ui.setTokens(agent.tokenUsage.prompt + agent.tokenUsage.completion);
+    ui.info(`restored ${agent.messages.length} messages`, "restore");
   }
 
   await agent.waitReady();
 
   process.on("SIGINT", async () => {
-    console.log(chalk.gray("\n  Suspending agent process..."));
+    ui.setStatus("idle");
+    ui.info("shutting down...", "shutdown");
     await bridge.stop();
     agent.cleanup();
+    ui.stop();
     process.exit(0);
   });
 

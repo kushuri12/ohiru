@@ -222,7 +222,7 @@ export const EXECUTION_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + 
 
 export const CHAT_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + FEW_SHOT_CHAT + `
 ## CHAT MODE
-- Direct, concise, natural language. ALWAYS respond in English.
+- Direct, concise, natural language. ALWAYS match the user's language (Indonesian/English).
 - No small talk. Every token counts.
 - Use search_web for facts that might be outdated.
 - About project code → only based on what you READ in this session.

@@ -30,6 +30,10 @@ export class CanvasState {
     this.nodes.delete(id);
   }
 
+  public update(node: any) {
+    this.nodes.set(node.id, node);
+  }
+
   public getSnapshot() {
     return {
       nodes: Array.from(this.nodes.values()),
