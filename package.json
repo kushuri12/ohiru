@@ -7,6 +7,12 @@
     "openhiru": "./packages/cli/dist/index.js"
   },
   "type": "module",
+  "files": [
+    "packages/*/dist/",
+    "shared/dist/",
+    "scripts/",
+    "README.md"
+  ],
   "scripts": {
     "build": "tsc -b tsconfig.json && node scripts/copy-ui.js",
     "dev": "tsx packages/cli/src/index.ts",

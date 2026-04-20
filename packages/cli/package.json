@@ -1,5 +1,5 @@
 {
-  "name": "@hiru/cli",
+  "name": "@ohiru/cli",
   "version": "1.1.0",
   "type": "module",
   "main": "dist/index.js",
