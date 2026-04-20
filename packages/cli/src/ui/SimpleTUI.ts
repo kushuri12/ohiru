@@ -431,8 +431,8 @@ export class SimpleTUI {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     
-    // Enable Mouse Reporting (1002=Cell Motion, 1003=All, 1006=SGR)
-    process.stdout.write("\x1b[?1002h\x1b[?1003h\x1b[?1006h");
+    // Enable Mouse Reporting (1002=Cell Motion, 1003=All, 1006=SGR) & Bracketed Paste (2004)
+    process.stdout.write("\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h");
 
     this.keyHandler = (str: string, key: any) => {
       if (!key) return;
@@ -469,8 +469,10 @@ export class SimpleTUI {
       }
 
       if (this.isSettingsOpen) {
-        if (!this.isProcessingKey) {
-          this.isProcessingKey = true;
+        // Fast-path for typing: don't debounce character inputs
+        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b");
+        if (isTypeable || !this.isProcessingKey) {
+          if (!isTypeable) this.isProcessingKey = true;
           this.handleSettingsKey(key, str).finally(() => {
             this.isProcessingKey = false;
           });
@@ -504,9 +506,19 @@ export class SimpleTUI {
       if (this.isRunning) this.scheduleRender();
     };
 
-    // RAW DATA LISTENER for mouse (bypasses readline keypress filtering)
+    // RAW DATA LISTENER for mouse & bracketed paste
     this.dataHandler = (chunk: Buffer) => {
         const s = chunk.toString();
+
+        // 0. Bracketed Paste Handling (\x1b[200~ ... \x1b[201~ )
+        if (s.includes("\x1b[200~")) {
+            const pasted = s.replace(/\x1b\[200~/g, "").replace(/\x1b\[201~/g, "");
+            if (this.isSettingsOpen && this.settingsView === "input") {
+                this.tempInput += pasted;
+                this.scheduleRender();
+            }
+            return;
+        }
 
         // 1. Instant Escape Detection (bypasses readline delay)
         if (chunk.length === 1 && chunk[0] === 27) {
@@ -773,8 +785,8 @@ export class SimpleTUI {
     if (this.timer) clearInterval(this.timer);
     if (this.renderTimeout) clearTimeout(this.renderTimeout);
 
-    // Restore original screen buffer & stop mouse reporting (1002/1003 for movement)
-    process.stdout.write("\x1b[?1049l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?25h");
+    // Restore original screen buffer & stop mouse/paste reporting
+    process.stdout.write("\x1b[?1049l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h");
 
     if (this.keyHandler) {
       process.stdin.off("keypress", this.keyHandler);
