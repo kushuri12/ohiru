@@ -13,7 +13,7 @@ export class CronManager {
   private timer: NodeJS.Timeout | null = null;
 
   constructor(agent: any) {
-    this.tasksFile = path.join(os.homedir(), ".hiru", "cron", "tasks.json");
+    this.tasksFile = path.join(os.homedir(), ".openhiru", "cron", "tasks.json");
     fs.ensureFileSync(this.tasksFile);
     this.runner = new TaskRunner(agent);
     this.loadTasks();

@@ -36,7 +36,7 @@ export class PluginManager extends EventEmitter {
 
   constructor(customDir?: string) {
     super();
-    this.pluginsDir = customDir || path.join(os.homedir(), ".hiru", "plugins");
+    this.pluginsDir = customDir || path.join(os.homedir(), ".openhiru", "plugins");
     this.registryPath = path.join(this.pluginsDir, "_registry.json");
   }
 

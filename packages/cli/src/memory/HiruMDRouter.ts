@@ -41,7 +41,7 @@ export class OpenHiruMDRouter {
   constructor(private hiruMDPath: string) {}
 
   /**
-   * Parse HIRU.md into sections by ## headings.
+   * Parse OPENHIRU.md into sections by ## headings.
    */
   async parseSections(): Promise<HiruMDSections> {
     if (!(await fs.pathExists(this.hiruMDPath))) {

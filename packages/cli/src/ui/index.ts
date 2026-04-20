@@ -2,4 +2,3 @@
 export * from "./theme.js";
 export * from "./banner.js";
 export * from "./SimpleTUI.js";
-export * from "./mascot.js";

@@ -24,7 +24,7 @@ CREATING SKILLS — QUALITY RULES:
 8. Library skills are read-only; you can only create/edit/delete skills in your own skill directory.
 
 MULTI-FILE SKILL SUPPORT:
-- Skills live in a folder (e.g. ~/.hiru/skills/buat_document/)
+- Skills live in a folder (e.g. ~/.openhiru/skills/buat_document/)
 - You can use ANY language: Python (.py), JavaScript (.js/.mjs), TypeScript (.ts), Shell (.sh), Batch (.bat), etc.
 - Set "main_filename" to your entry file, e.g. "main.py" or "generator.js"
 - Add extra support files via "extra_files" JSON array: [{"filename":"config.json","content":"..."},{"filename":"helpers.py","content":"..."}]

@@ -9,24 +9,29 @@ export const HIRU_DIR = path.join(os.homedir(), ".openhiru");
 const OLD_HIRU_DIR = path.join(os.homedir(), ".hiru");
 
 /**
- * .hiru/screenshot for screenshots taken by tools
+ * .openhiru/screenshot for screenshots taken by tools
  */
 export const HIRU_SCREENSHOTS_DIR = path.join(HIRU_DIR, "screenshot");
 
 /**
- * .hiru/received for files received from user/sources
+ * .openhiru/received for files received from user/sources
  */
 export const HIRU_RECEIVED_DIR = path.join(HIRU_DIR, "received");
 
 /**
- * .hiru/data for internal hiru storage (memory, sessions, etc)
+ * .openhiru/data for internal storage (memory, sessions, etc)
  */
 export const HIRU_DATA_DIR = path.join(HIRU_DIR, "data");
 
 /**
- * .hiru/exports for files created by hiru for the user
+ * .openhiru/exports for files created for the user
  */
 export const HIRU_EXPORTS_DIR = path.join(HIRU_DIR, "exports");
+
+/**
+ * .openhiru/skills for dynamic skills
+ */
+export const HIRU_SKILLS_DIR = path.join(HIRU_DIR, "skills");
 
 /**
  * Ensure all standard hiru directories exist and migrate old files if needed.
@@ -45,6 +50,7 @@ export async function ensureHiruDirs() {
   await fs.mkdir(HIRU_RECEIVED_DIR, { recursive: true });
   await fs.mkdir(HIRU_DATA_DIR, { recursive: true });
   await fs.mkdir(HIRU_EXPORTS_DIR, { recursive: true });
+  await fs.mkdir(HIRU_SKILLS_DIR, { recursive: true });
 
   // Migration for cleaner root: Move DBs and memory files from .hiru to .hiru/data
   const migrateFiles = [

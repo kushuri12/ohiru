@@ -841,7 +841,7 @@ export class HiruAgent extends EventEmitter {
       this.currentTaskCategory = typeof input === "string" ? classifyTask(input) : "full";
 
       // PRE-FLIGHT TOKEN BUDGET CHECK
-      const systemPrompt = this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT);
+      const systemPrompt = await this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT);
       const budget = this.tokenBudget.check(
         typeof systemPrompt === "string" ? systemPrompt : JSON.stringify(systemPrompt),
         this.getSmartTools({ isReadonly: true }),
@@ -949,13 +949,13 @@ export class HiruAgent extends EventEmitter {
             this.emit("status", "Hiru is reflecting on response...");
             // Forced retry for empty responses
             try {
-              const retry = await generateText({
+              const retryResult = await generateText({
                  model: this.model,
-                 system: this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT) + "\n## MANDATORY: YOUR PREVIOUS RESPONSE HAD NO VISIBLE TEXT. YOU MUST PROVIDE A VISIBLE RESPONSE FOR THE USER NOW. DO NOT JUST THINK.",
+                 system: (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT)) + "\n## MANDATORY: YOUR PREVIOUS RESPONSE HAD NO VISIBLE TEXT. YOU MUST PROVIDE A VISIBLE RESPONSE FOR THE USER NOW. DO NOT JUST THINK.",
                  messages: coreMessages,
                  abortSignal: this.createAbortSignal(15000),
               });
-              responseText = TagStripper.strip(retry.text || "Hello! How can I assist you today? 🌸");
+              responseText = TagStripper.strip(retryResult.text || "Hello! How can I assist you today? 🌸");
               this.emit("token", responseText);
             } catch {
               responseText = "Sorry, an error occurred. Please try again.";

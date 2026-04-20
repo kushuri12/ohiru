@@ -13,13 +13,18 @@ const MODEL_LIMITS: Record<string, number> = {
   "gpt-4o": 128_000,
   "gpt-4o-mini": 128_000,
   "gpt-4-turbo": 128_000,
-  "claude-3-5-sonnet-20241022": 200_000,
-  "claude-3-5-haiku-20241022": 200_000,
-  "claude-opus-4-5": 200_000,
-  "claude-sonnet-4-5": 200_000,
+  "claude-3-5-sonnet": 200_000,
+  "claude-3-5-haiku": 200_000,
+  "claude-3-opus": 200_000,
   "gemini-2.0-flash": 1_000_000,
-  "gemini-2.5-pro": 1_000_000,
-  "default": 128_000, // Safe default for modern models
+  "gemini-2.0-pro": 2_000_000,
+  "minimax": 196_608,
+  "deepseek-chat": 64_000,
+  "deepseek-reasoner": 64_000,
+  "qwen": 128_000,
+  "llama-3": 128_000,
+  "mistral-large": 128_000,
+  "default": 128_000, 
 };
 
 /**

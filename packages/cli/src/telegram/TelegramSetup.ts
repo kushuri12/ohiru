@@ -2,7 +2,6 @@
 import chalk from "chalk";
 import { c } from "../ui/theme.js";
 import { printCompactHeader } from "../ui/banner.js";
-import { MASCOT_SM } from "../ui/mascot.js";
 
 export async function runTelegramSetup(config: any): Promise<any> {
   const { text, password, isCancel, cancel, intro, outro, spinner } =
@@ -10,7 +9,7 @@ export async function runTelegramSetup(config: any): Promise<any> {
 
   console.clear();
   printCompactHeader("TELEGRAM SETUP", "1.0.0");
-  intro(c.label(" Setup Telegram Bot ") + ` ${MASCOT_SM}`);
+  intro(c.label(" Setup Telegram Bot "));
 
   console.log(chalk.dim(`
   Instructions:

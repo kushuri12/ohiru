@@ -10,12 +10,6 @@ export const WORDMARK = [
   "  ╚══╝ ╚═╝ ╚══════╝╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚═╝╚═════╝ ",
 ];
 
-const ASCII_SMALL = [
-  "  ╭──╮  ",
-  "  │◉│  ",
-  "  ╰──╯  ",
-];
-
 /**
  * The main startup banner shown when `openhiru` starts.
  * Layout: centered wordmark + info.

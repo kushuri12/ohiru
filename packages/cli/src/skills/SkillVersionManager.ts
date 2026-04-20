@@ -50,15 +50,23 @@ export class SkillVersionManager {
 
     const latestResult = new Map<string, string>();
     for (const [base, versions] of groups.entries()) {
-      // Sort descending by version, prefer code files over metadata on ties.
-      versions.sort((a, b) => {
-        if (b.version !== a.version) return b.version - a.version;
-        // Priority: .json (0) > others (1). Use a.ext === ".json" ? -1 : 0 to sort .json first.
-        const aPriority = a.ext === ".json" ? 0 : 1;
-        const bPriority = b.ext === ".json" ? 0 : 1;
-        return aPriority - bPriority; // Ascending: 0 comes before 1
-      });
-      latestResult.set(base, versions[0].path);
+      // 1. Sort versions descending
+      versions.sort((a, b) => b.version - a.version);
+      
+      const latestVersion = versions[0].version;
+      
+      // 2. Find the .json for the latest version
+      const latestJson = versions.find(v => v.version === latestVersion && v.ext === ".json");
+      
+      if (latestJson) {
+        latestResult.set(base, latestJson.path);
+      } else {
+        // Fallback: look for ANY version that has a .json
+        const anyJson = versions.sort((a, b) => b.version - a.version).find(v => v.ext === ".json");
+        if (anyJson) {
+          latestResult.set(base, anyJson.path);
+        }
+      }
     }
 
     this.cache = { result: latestResult, timestamp: now };

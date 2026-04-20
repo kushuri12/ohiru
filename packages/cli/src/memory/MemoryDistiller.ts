@@ -16,7 +16,7 @@ export class MemoryDistiller {
     this.agent = agent;
     this.daily = new DailyNotes();
     this.persistent = new PersistentSummary();
-    this.logPath = path.join(os.homedir(), ".hiru", "memory", "distillation.log");
+    this.logPath = path.join(os.homedir(), ".openhiru", "memory", "distillation.log");
     fs.ensureFileSync(this.logPath);
   }
 

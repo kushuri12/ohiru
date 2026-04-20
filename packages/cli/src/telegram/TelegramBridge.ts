@@ -101,7 +101,7 @@ export class TelegramBridge {
     }
 
     (this.agent as any).tools.save_to_exports = {
-      description: `Save a file to Hiru's permanent exports folder (~/.hiru/exports).
+      description: `Save a file to OpenHiru's permanent exports folder (~/.openhiru/exports).
 Use this for files the user wants to keep globally or access via Telegram sharing.`,
       parameters: z.object({
         path: z.string().describe("Source file path to save to exports folder"),
@@ -113,7 +113,7 @@ Use this for files the user wants to keep globally or access via Telegram sharin
         
         // Security check
         if (!isSafePath(resolvedSrc)) {
-          return `❌ Permission denied for path: ${srcPath}. You can only save files from within the project directory or ~/.hiru/`;
+          return `❌ Permission denied for path: ${srcPath}. You can only save files from within the project directory or ~/.openhiru/`;
         }
 
         const baseName = filename || pathMod.basename(resolvedSrc);

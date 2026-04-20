@@ -6,6 +6,7 @@ import chalk from "chalk";
 import { z } from "zod";
 import { EventEmitter } from "events";
 import { SkillVersionManager } from "./SkillVersionManager.js";
+import { HIRU_SKILLS_DIR } from "../utils/paths.js";
 
 // ─────────────────────────────────────────────────────────────
 // Types
@@ -110,8 +111,7 @@ export class SkillManager extends EventEmitter {
 
   constructor(customDir?: string) {
     super();
-    // Default: ~/.hiru/skills/
-    this.skillsDir = customDir || path.join(os.homedir(), ".hiru", "skills");
+    this.skillsDir = customDir || HIRU_SKILLS_DIR;
   }
 
   get dir(): string {
