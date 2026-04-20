@@ -550,20 +550,27 @@ export class HiruAgent extends EventEmitter {
           if (!msg.content && !Array.isArray(msg.content)) continue;
           
           // Dedup: skip if we've seen an identical message from the same role recently
+          // EXCEPT if it contains tool calls (important for AI SDK sequence)
+          const hasToolCalls = Array.isArray(msg.content) && msg.content.some((c: any) => c.type === "tool-call");
           const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
-          if (seenFingerprints.has(fp) && !isLast) {
+          if (seenFingerprints.has(fp) && !isLast && !hasToolCalls) {
             continue; // Skip duplicate
           }
           seenFingerprints.add(fp);
           raw.push(msg); 
         } else if (msg.role === "tool" || msg.role === "tool_result") {
-          const MAX_TOOL_SHRED = 15000; // Reduced from 60000 — tool results don't need full preservation
-          const content = (msg as any).content || (msg as any).result || "";
-          let finalContent = content;
-          if (!isLast && typeof content === "string" && content.length > MAX_TOOL_SHRED) {
-             finalContent = content.slice(0, MAX_TOOL_SHRED) + "... [Result shredded for speed]";
+          // Keep tool results as they are if they are already in the array format
+          if (Array.isArray(msg.content)) {
+            raw.push(msg);
+          } else {
+            const MAX_TOOL_SHRED = 15000;
+            const content = (msg as any).content || (msg as any).result || "";
+            let finalContent = content;
+            if (!isLast && typeof content === "string" && content.length > MAX_TOOL_SHRED) {
+                finalContent = content.slice(0, MAX_TOOL_SHRED) + "... [Result shredded for speed]";
+            }
+            raw.push({ role: "tool", content: finalContent, toolCallId: (msg as any).toolCallId || (msg as any).id });
           }
-          raw.push({ role: "tool", content: finalContent, toolCallId: (msg as any).toolCallId || (msg as any).id });
         } else if (msg.role === "system") {
           raw.push({ role: "user", content: `[System]: ${msg.content}` });
         }
@@ -611,7 +618,9 @@ export class HiruAgent extends EventEmitter {
 
     if (fixed.length > 0) {
       const last = fixed[fixed.length - 1];
-      if (last.role === "assistant") {
+      const hasToolCalls = Array.isArray(last.content) && last.content.some((c: any) => c.type === "tool-call");
+      
+      if (last.role === "assistant" && !hasToolCalls) {
         fixed.push({ role: "user", content: "Please continue." });
       }
     }
