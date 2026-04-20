@@ -360,6 +360,37 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
         await ctx.reply(`Unknown action: ${action}`);
       }
     });
+
+    this.bot.command("yes", async (ctx) => {
+      await this.handleYesNo(ctx, true);
+    });
+
+    this.bot.command("no", async (ctx) => {
+      await this.handleYesNo(ctx, false);
+    });
+  }
+
+  private async handleYesNo(ctx: any, isYes: boolean) {
+      this.currentChatId = ctx.chat.id;
+      if (this.pendingPlanResolve || this.pendingPermResolve) {
+          if (this.pendingPlanResolve) {
+            const resolve = this.pendingPlanResolve;
+            this.pendingPlanResolve = null;
+            if (isYes && this.currentChatId && this.currentStatusMsgId) {
+              try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, "⚡ *Starting execution...*", { parse_mode: "Markdown" }); } catch {}
+            } else if (!isYes) {
+              await ctx.reply("🛑 Task cancelled.");
+            }
+            resolve(isYes);
+          } else if (this.pendingPermResolve) {
+            const resolve = this.pendingPermResolve;
+            this.pendingPermResolve = null;
+            await ctx.reply(isYes ? "✅ Permission granted." : "❌ Permission denied.");
+            resolve(isYes);
+          }
+      } else {
+          await ctx.reply("No pending approval required at the moment.");
+      }
   }
 
   private setupMessageHandler() {
@@ -368,22 +399,11 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
       const text = ctx.message.text.toLowerCase().trim();
 
       if (this.pendingPlanResolve || this.pendingPermResolve) {
-        const isYes = ["ya", "y", "yes", "/yes", "ok", "continue", "sip", "yup", "gas", "boleh", "✅ yes, continue"].some(v => text.includes(v)) || text === "y" || text === "ya" || text === "/yes";
-        const isNo = ["tidak", "n", "no", "/no", "cancel", "stop", "❌ cancel", "gak"].some(v => text.includes(v)) || text === "n" || text === "no" || text === "/no";
+        const isYes = ["ya", "y", "yes", "/yes", "ok", "continue", "sip", "yup", "gas", "boleh", "✅ yes, continue"].some(v => text.includes(v)) || text === "y" || text === "ya" || text === "/yes" || text === "/yes@bot";
+        const isNo = ["tidak", "n", "no", "/no", "cancel", "stop", "❌ cancel", "gak"].some(v => text.includes(v)) || text === "n" || text === "no" || text === "/no" || text === "/no@bot";
 
         if (isYes || isNo) {
-          if (this.pendingPlanResolve) {
-            const resolve = this.pendingPlanResolve;
-            this.pendingPlanResolve = null;
-            if (isYes && this.currentChatId && this.currentStatusMsgId) {
-              try { await this.bot.api.editMessageText(this.currentChatId, this.currentStatusMsgId, "⚡ *Starting execution...*", { parse_mode: "Markdown" }); } catch {}
-            }
-            resolve(isYes);
-          } else if (this.pendingPermResolve) {
-            const resolve = this.pendingPermResolve;
-            this.pendingPermResolve = null;
-            resolve(isYes);
-          }
+          await this.handleYesNo(ctx, isYes);
           return;
         }
       }
