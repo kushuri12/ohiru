@@ -395,18 +395,26 @@ export class HiruAgent extends EventEmitter {
    * Smart tool selector — only returns tools relevant to the current task.
    * This is the #1 token saver: cuts tool definitions from ~5000+ to ~500-1500 tokens.
    */
-  private getSmartTools(options: { isReadonly?: boolean } = {}): Record<string, any> {
+  private getSmartTools(options: { isReadonly?: boolean; input?: string } = {}): Record<string, any> {
     const allTools = this.getTools(options);
+    
+    // Fallback search input: use provided one or the latest user message
+    const searchInput = options.input || (() => {
+       const lastUser = [...this.messages].reverse().find(m => m.role === "user");
+       return typeof lastUser?.content === "string" ? lastUser.content : "";
+    })();
+
     // Select only relevant tools based on current task category
-    const selected = selectTools(allTools, this.currentTaskCategory);
-    // Trim tool descriptions to max 80 chars for additional savings
+    const selected = selectTools(allTools, this.currentTaskCategory, searchInput);
+    
+    // Trim tool descriptions to max 350 chars for additional savings
     return trimToolDescriptions(selected);
   }
 
   /**
    * Helper to get system prompt with cache control hints
    */
-  private async getSystemPrompt(ctx: ProjectContext, wrapper?: (p: string) => string): Promise<any> {
+  private async getSystemPrompt(ctx: ProjectContext, wrapper?: (p: string) => string, input?: string): Promise<any> {
     // Modular Soul Injection (OpenClaw style)
     const modularSoul: any = {};
     try {
@@ -425,6 +433,7 @@ export class HiruAgent extends EventEmitter {
     const contextOptions: ContextBuilderOptions = {
       hasDesktopTools: !!(this.tools["take_screenshot"] || this.tools["move_mouse"] || this.tools["inspect_ui"]),
       isTelegram: !!(this.config as any).telegramMode,
+      userInput: input,
     };
 
     // Combined skills for prompt
@@ -841,10 +850,11 @@ export class HiruAgent extends EventEmitter {
       this.currentTaskCategory = typeof input === "string" ? classifyTask(input) : "full";
 
       // PRE-FLIGHT TOKEN BUDGET CHECK
-      const systemPrompt = await this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT);
+      const inputStr = typeof input === "string" ? input.trim() : "";
+      const systemPrompt = await this.getSystemPrompt(ctx, PLANNING_SYSTEM_PROMPT, inputStr);
       const budget = this.tokenBudget.check(
         typeof systemPrompt === "string" ? systemPrompt : JSON.stringify(systemPrompt),
-        this.getSmartTools({ isReadonly: true }),
+        this.getSmartTools({ isReadonly: true, input: inputStr }),
         this.messages
       );
       
@@ -857,7 +867,6 @@ export class HiruAgent extends EventEmitter {
 
       // Minimalist greeting filter - Only for extremely short greetings to keep response time low.
       // For everything else, let the LLM's brain decide (Planning Phase).
-      const inputStr = typeof input === "string" ? input.trim() : "";
       const shortGreetings = /^(halo|hello|hi|p|pagi|siang|sore|malam|oi|hey|openhiru)$/i;
       const isShortGreeting = inputStr && shortGreetings.test(inputStr) && inputStr.split(/\s+/).length < 3;
       
@@ -897,9 +906,9 @@ export class HiruAgent extends EventEmitter {
             model: this.model,
             system: useMinimalPrompt
               ? (await this.getMinimalSystemPrompt(ctx))
-              : (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT)),
+              : (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT, inputStr)),
             messages: coreMessages,
-            tools: this.getSmartTools({ isReadonly: true }), // Smart tool selection
+            tools: this.getSmartTools({ isReadonly: true, input: inputStr }), // Smart tool selection
             abortSignal: this.createAbortSignal(30000),
             maxOutputTokens: 1024, // Short answers for chat
             maxRetries: 2
@@ -951,7 +960,7 @@ export class HiruAgent extends EventEmitter {
             try {
               const retryResult = await generateText({
                  model: this.model,
-                 system: (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT)) + "\n## MANDATORY: YOUR PREVIOUS RESPONSE HAD NO VISIBLE TEXT. YOU MUST PROVIDE A VISIBLE RESPONSE FOR THE USER NOW. DO NOT JUST THINK.",
+                 system: (await this.getSystemPrompt(ctx, CHAT_SYSTEM_PROMPT, inputStr)) + "\n## MANDATORY: YOUR PREVIOUS RESPONSE HAD NO VISIBLE TEXT. YOU MUST PROVIDE A VISIBLE RESPONSE FOR THE USER NOW. DO NOT JUST THINK.",
                  messages: coreMessages,
                  abortSignal: this.createAbortSignal(15000),
               });

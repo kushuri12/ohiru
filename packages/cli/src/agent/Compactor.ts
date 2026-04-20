@@ -105,7 +105,22 @@ Keep it under 300 words. No filler.`;
    * Uses priority-based retention to keep user messages.
    */
   async prune(messages: any[]): Promise<any[]> {
-    if (messages.length <= this.strategy.maxMessages) return messages;
+    const isOverMessageLimit = messages.length > this.strategy.maxMessages;
+    
+    // Check if any single message is MASSIVE (e.g. > 50k chars)
+    const hasHugeMessage = messages.some(m => typeof m.content === "string" && m.content.length > 50000);
+    
+    if (!isOverMessageLimit && !hasHugeMessage) return messages;
+
+    // If we have a huge message but few total messages, we must still shrink them
+    if (hasHugeMessage && messages.length < 5) {
+        return messages.map(m => {
+            if (typeof m.content === "string" && m.content.length > 30000) {
+                return { ...m, content: m.content.slice(0, 30000) + "\n...[Content truncated due to extreme size]" };
+            }
+            return m;
+        });
+    }
 
     const tail = messages.slice(-this.strategy.tailSize);
     const head = messages.slice(0, -this.strategy.tailSize);

@@ -128,7 +128,8 @@ export function classifyTask(input: string): TaskCategory {
 // ─────────────────────────────────────────────────────────────────────────────
 export function selectTools(
   allTools: Record<string, any>,
-  category: TaskCategory
+  category: TaskCategory,
+  input: string = ""
 ): Record<string, any> {
   // Always use all tools for full/complex tasks
   if (category === "full") return allTools;
@@ -161,9 +162,21 @@ export function selectTools(
       }
       continue;
     }
-    // Skill tools: always include (they are task-specific by nature)
+    // Skill tools: only include if the task involves skills OR if keywords match
     if (name.startsWith("skill_")) {
-      filtered[name] = tool;
+      const skillName = name.slice(6).toLowerCase();
+      const userQuery = input.toLowerCase();
+      
+      // Inclusion criteria:
+      // 1. Task category is 'skill' or 'full'
+      // 2. Skill name is mentioned in user message
+      // 3. It's a 'Library' skill (pre-selected high-quality core tools)
+      const isRelevancyMatch = userQuery.includes(skillName.replace(/_/g, " "));
+      const isCategoryMatch  = category === "skill";
+      
+      if (isCategoryMatch || isRelevancyMatch) {
+         filtered[name] = tool;
+      }
     }
   }
 

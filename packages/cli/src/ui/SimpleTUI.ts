@@ -583,7 +583,8 @@ export class SimpleTUI {
       }
       if (key.name === "backspace") {
         this.tempInput = this.tempInput.slice(0, -1);
-      } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
+      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b")) {
+        // Handle both single characters and pasted strings
         this.tempInput += str;
       }
       this.scheduleRender();

@@ -17,7 +17,7 @@ export class ContextBuilder {
     private snapshot?: string,
     private modularSoul?: { soul?: string; identity?: string; user?: string },
     private pluginManager?: any,
-    private options?: { hasDesktopTools?: boolean; isTelegram?: boolean }
+    private options?: { hasDesktopTools?: boolean; isTelegram?: boolean; userInput?: string }
   ) {}
 
   addSection(title: string, content: string, cacheable: boolean = false) {
@@ -45,11 +45,27 @@ You are OpenHiru, an OVERPOWERED Autonomous Coding Agent.
     const skills = this.skillManager?.listSkills() || [];
     if (skills.length === 0) return this;
 
-    const list = skills.map((s: any) => 
+    const query = (this.options?.userInput || "").toLowerCase();
+    
+    // Smart Filter: If > 50 skills, only show those matching the user query
+    // Otherwise show all up to 50
+    let filtered = skills;
+    if (skills.length > 50) {
+       filtered = skills.filter((s: any) => 
+          s.name.toLowerCase().includes(query.replace(/_/g, " ")) || 
+          s.description.toLowerCase().includes(query)
+       );
+       // If filter returns too few, fallback to first 20 + library
+       if (filtered.length < 5) {
+          filtered = skills.slice(0, 20);
+       }
+    }
+
+    const list = filtered.slice(0, 50).map((s: any) => 
       `  <skill name="${s.name}">\n    <description>${s.description}</description>\n  </skill>`
     ).join("\n");
     
-    const xml = `<skills>\n${list}\n</skills>`;
+    const xml = `<skills>\n${list}${skills.length > 50 ? "\n  <!-- and more... use search to find other skills -->" : ""}\n</skills>`;
     return this.addSection("SKILLS", xml);
   }
 
@@ -185,6 +201,7 @@ export interface PromptPart {
 export interface ContextBuilderOptions {
   hasDesktopTools?: boolean;
   isTelegram?: boolean;
+  userInput?: string;
 }
 
 export function buildSystemPromptParts(
