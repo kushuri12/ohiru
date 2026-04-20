@@ -431,8 +431,8 @@ export class SimpleTUI {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     
-    // Enable Mouse Reporting (1002=Cell Motion, 1003=All, 1006=SGR) & Bracketed Paste (2004)
-    process.stdout.write("\x1b[?1002h\x1b[?1003h\x1b[?1006h\x1b[?2004h");
+    // Enable Mouse Reporting (1002=Button Event) & Bracketed Paste (2004)
+    process.stdout.write("\x1b[?1002h\x1b[?1006h\x1b[?2004h");
 
     this.keyHandler = (str: string, key: any) => {
       if (!key) return;
@@ -470,7 +470,7 @@ export class SimpleTUI {
 
       if (this.isSettingsOpen) {
         // Fast-path for typing: don't debounce character inputs
-        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b");
+        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !str.includes(";");
         if (isTypeable || !this.isProcessingKey) {
           if (!isTypeable) this.isProcessingKey = true;
           this.handleSettingsKey(key, str).finally(() => {
@@ -595,7 +595,7 @@ export class SimpleTUI {
       }
       if (key.name === "backspace") {
         this.tempInput = this.tempInput.slice(0, -1);
-      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b")) {
+      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !str.includes(";")) {
         // Handle both single characters and pasted strings
         this.tempInput += str;
       }
