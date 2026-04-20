@@ -364,6 +364,7 @@ async function main() {
   if (existing) {
     agent.messages = JSON.parse(existing.messages);
     agent.tokenUsage = JSON.parse(existing.tokenUsage || '{"prompt":0,"completion":0}');
+    agent.sanitizeMessages(); // Clean up core after restoration
     console.log(chalk.gray(`  ✓ Restored context footprint (${agent.messages.length} messages).`));
   }
 

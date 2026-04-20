@@ -248,7 +248,9 @@ export class SkillManager extends EventEmitter {
     if (!metaExists) return null;
 
     const metaRaw = await fs.readFile(metaPath, "utf8");
-    const metadata: SkillMetadata = JSON.parse(metaRaw);
+    // Robust parsing: strip comments from JSON metadata
+    const cleanRaw = metaRaw.replace(/\/\/.*|\/\*[\s\S]*?\*\//g, "");
+    const metadata: SkillMetadata = JSON.parse(cleanRaw);
 
     // Read full description if exists
     if (await fs.access(mdPath).then(() => true).catch(() => false)) {

@@ -627,7 +627,58 @@ export class HiruAgent extends EventEmitter {
 
     return fixed;
   }
+  /**
+   * Sanitizes message history after restoration to prevent ERR_MISSING_TOOL_RESULTS.
+   * Scans for assistant messages with tool calls and ensures they are followed by results.
+   * If results are missing, it strips the tool calls from the assistant message.
+   */
+  public sanitizeMessages(): void {
+    if (!this.messages || this.messages.length === 0) return;
 
+    const cleaned: any[] = [];
+    const toolCallRegistry = new Set<string>();
+
+    // Pass 1: Build a list of all tool results we have
+    for (const msg of this.messages) {
+      if (msg.role === "tool" || msg.role === "tool_result") {
+        if (msg.toolCallId) toolCallRegistry.add(msg.toolCallId);
+        if (Array.isArray(msg.content)) {
+          msg.content.forEach((part: any) => {
+            if (part.type === "tool-result" && part.toolCallId) {
+              toolCallRegistry.add(part.toolCallId);
+            }
+          });
+        }
+      }
+    }
+
+    // Pass 2: Clean assistant messages that have no matching results
+    for (const msg of this.messages) {
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        const originalContent = msg.content;
+        const newContent = originalContent.filter((part: any) => {
+          if (part.type === "tool-call") {
+            const hasResult = toolCallRegistry.has(part.toolCallId);
+            return hasResult;
+          }
+          return true;
+        });
+
+        // If all tool calls were removed but it was ONLY tool calls, 
+        // we must avoid leaving an empty message.
+        if (newContent.length === 0) {
+          cleaned.push({ ...msg, content: "Continuing from internal checkpoint." });
+        } else {
+          cleaned.push({ ...msg, content: newContent });
+        }
+      } else {
+        cleaned.push(msg);
+      }
+    }
+
+    this.messages = cleaned;
+    this.adaptedMessagesCache = null;
+  }
   cleanup(): void {
     if (this.memoryGuard) this.memoryGuard.stop();
     if (this.boundFileProgressHandler) {
