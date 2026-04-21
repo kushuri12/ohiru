@@ -1,70 +1,52 @@
-<h1 align="center">
-  🦊 O-HIRU — THE OVERPOWERED AI AGENT
-</h1>
+# 🦊 OpenHiru
 
-<p align="center">
-  <strong>The #1 Personal Autonomous AI Agent. Built for Speed and Precision.</strong>
-</p>
+**The Autonomous AI agentic ecosystem for high-tier engineering.**
 
-<p align="center">
-  <img src="https://img.shields.io/npm/v/@kushuri12/ohiru.svg?style=flat-square&color=CC785C" alt="NPM Version" />
-  <img src="https://img.shields.io/badge/status-overpowered-CC785C?style=flat-square" alt="Status" />
-  <img src="https://img.shields.io/badge/capability-autonomous-blue?style=flat-square" alt="Capability" />
-</p>
+OpenHiru is a proactive AI agent designed to operate across multiple channels with long-term memory, real-time tool usage, and a modular architecture. It is built to be a resilient, complete, and autonomous digital colleague.
 
 ---
 
-## ⚡ WHAT IS O-HIRU?
+### ⚡ Core Capabilities
 
-**OpenHiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Evolved for maximum performance, OpenHiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
+*   **Autonomous Engineering:** Multi-step **ReAct** reasoning with self-critique loops.
+*   **3-Layer Memory:** Intelligent context routing, daily logging, and persistent knowledge distillation.
+*   **Multi-Channel Gateway:** Native support for **Telegram**, Discord, WhatsApp, Signal, and Matrix.
+*   **Proactive Heartbeat:** Automatic project monitoring and error detection every 30 minutes.
+*   **Visual Workspace:** Live **Canvas** for rendering code, charts, and UI designs.
+*   **Voice Interface:** Native **TTS/STT** support with custom wake-word listeners ("Hey OpenHiru").
 
-## 🚀 KEY MODULES
+### 📦 Installation
 
-### 🧠 Autonomous Brain (v1.2.3)
-- **ReAct Loop:** Deep multi-step reasoning (Reason + Act) before every execution.
-- **Self-Critique:** Agent audits its own output for errors before reporting.
-- **Context Compressor:** Intelligent summarization so the agent never "forgets" in long threads.
-- **Heartbeat:** Runs every 30 mins to check your project status, monitor for errors, and suggest fixes.
-
-### 🌐 Multi-Channel Gateway
-OpenHiru isn't just a bot; it's a **Nervous System**. Connect via:
-- **Major:** Telegram, Discord, Slack, WhatsApp Web
-- **Privacy:** Signal, Matrix (E2EE), IRC, Email
-- **Direct:** WebChat Widget, CLI-Chat, Ntfy
-
-### 💾 3-Layer Memory System
-1. **Knowledge Graph:** Categorized facts about you, your project, and your preferences (`.md` files).
-2. **Daily Notes:** Automated daily logging of every action and decision.
-3. **Persistent Summary:** A master `OPENHIRU.md` file that distills long-term wisdom from history.
-
-### 🎙️ Voice & Vision
-- **TTS/STT:** Talk to OpenHiru natively via OpenAI Whisper, ElevenLabs, or local engines.
-- **Wake Word:** Responds to "Hey OpenHiru" immediately.
-- **Canvas:** A live visual workspace where the agent renders charts, code diagrams, and UI mocks.
-
-## 🛠️ INSTALLATION
-
+#### One-Step Setup
 ```bash
-# One-command install for Linux/macOS
-curl -fsSL https://ohiru.vercel.app/install.sh | bash
-
-# One-command install for Windows
+# Windows (PowerShell)
 powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
+
+# Linux / macOS
+curl -fsSL https://ohiru.vercel.app/install.sh | bash
 ```
 
-## 📖 CLI COMMANDS
+### 🛠️ CLI Reference
 
-| Command | Description |
+| Command | Action |
 | :--- | :--- |
-| `openhiru` | Launch the main Telegram agent |
-| `openhiru gateway start` | Start the WebSocket control plane |
-| `openhiru dashboard start` | Open the Web UI dashboard (port 3792) |
-| `openhiru doctor` | Run full system health checks |
-| `openhiru agents add <id>` | Spawn a new isolated agent instance |
-| `openhiru memory distill` | Manually compress project memory |
+| `openhiru` | Start the primary Telegram agent |
+| `openhiru --setup` | Configure AI providers and bot tokens |
+| `openhiru doctor` | Run system health and dependency checks |
+| `openhiru gateway <start\|stop>` | Manage the WebSocket control plane |
+| `openhiru dashboard start` | Launch the web-based monitoring UI |
+| `openhiru memory distill` | Manually compress and optimize project memory |
+| `openhiru settings` | Open the interactive TUI configuration menu |
 
-## 🛡️ CORE AGENT SOUL
-OpenHiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
+### 🧩 Modules
+
+*   **Agent Core (v1.2.3):** Optimized for low latency and high reliability with Anthropic/Google/OpenAI models.
+*   **Skill Manager:** Install and manage external toolkits for specialized tasks.
+*   **Plugin System:** Hot-load GitHub/NPM plugins to extend agent logic.
+*   **Voice Engine:** Whisper-powered transcription and ElevenLabs integration.
 
 ---
-*Developed with ❤️ by OpenHiru Team. v1.2.3 — OVERPOWERED.*
+
+<p align="center">
+  <em>Developed with ❤️ by OpenHiru Team • v1.2.3 — State-of-the-Art.</em>
+</p>
