@@ -42,13 +42,11 @@ import { ProjectSnapshot } from "./Snapshot.js";
 import { NoOpHandler } from "./NoOpHandler.js";
 import { PlanEnforcer } from "./PlanEnforcer.js";
 import { PluginManager, createPluginTools } from "../plugins/index.js";
-import {
-  classifyTask,
-  selectTools,
+  getKitTools,
   applyTieredCompression,
   trimToolDescriptions,
   MINIMAL_SYSTEM_PROMPT,
-  TaskCategory,
+  ToolKitName,
 } from "./SmartContext.js";
 import { HeartbeatManager } from "./Heartbeat.js";
 import { GlobalIntelligence } from "./GlobalIntelligence.js";
@@ -61,7 +59,8 @@ import { ErrorPatternLibrary } from "../tools/ErrorHandler.js";
 
 export class HiruAgent extends EventEmitter {
   private model: any;
-  private currentTaskCategory: TaskCategory = "full"; // Tracks current task for smart tool selection
+  private currentTaskCategory: string = "full"; 
+  private activeKits = new Set<ToolKitName>(["core"]);
   public config: HiruConfig;
   public messages: any[] = [];
   private maxIterations = 50;
@@ -157,6 +156,28 @@ export class HiruAgent extends EventEmitter {
         
         // 0. Initialize local tools with internal tools
         this.tools = { ...internalTools };
+
+        // 0.1 Register the Toolkit Opener — This is a CORE tool
+        this.tools["open_toolkit"] = {
+          description: "Opens a specialized toolkit (web, desktop, or specialist) to access more advanced tools. Use this when your current 'core' tools are insufficient. Examples: 'web' for searching/browsing, 'desktop' for screenshots/mouse, 'specialist' for managing skills/plugins.",
+          parameters: {
+            type: "object",
+            properties: {
+              kitName: {
+                type: "string",
+                enum: ["web", "desktop", "specialist"],
+                description: "The name of the toolkit to open."
+              }
+            },
+            required: ["kitName"]
+          },
+          execute: async ({ kitName }: { kitName: ToolKitName }) => {
+            this.activeKits.add(kitName);
+            const status = `✅ Toolkit '${kitName}' loaded. You now have access to ${kitName}-specific tools. Please proceed with your task using these new capabilities.`;
+            this.success(`Toolkit '${kitName}' opened`, "system");
+            return status;
+          }
+        };
 
         // 1. Register memory tool
         const memoryTools = createMemoryTools(this.globalMemory);
@@ -395,9 +416,11 @@ export class HiruAgent extends EventEmitter {
   private getSmartTools(options: { isReadonly?: boolean; input?: string } = {}): Record<string, any> {
     const allTools = this.getTools(options);
     
-    // Smart filtering disabled as per user request to ensure maximum autonomy.
-    // We now always return the full set of available tools.
-    return trimToolDescriptions(allTools);
+    // Toolkit-based selection for maximum token efficiency
+    const kitTools = getKitTools(allTools, this.activeKits);
+    
+    // Trim tool descriptions to max 400 chars for additional savings
+    return trimToolDescriptions(kitTools);
   }
 
   /**
@@ -701,6 +724,7 @@ export class HiruAgent extends EventEmitter {
     }
     this.messages = [];
     this.trackedSteps = [];
+    this.activeKits = new Set<ToolKitName>(["core"]);
     this.currentAbortController = null;
     this.attachThinkingListeners();
     if (this.checkpointManager) {
