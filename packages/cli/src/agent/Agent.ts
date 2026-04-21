@@ -42,11 +42,14 @@ import { ProjectSnapshot } from "./Snapshot.js";
 import { NoOpHandler } from "./NoOpHandler.js";
 import { PlanEnforcer } from "./PlanEnforcer.js";
 import { PluginManager, createPluginTools } from "../plugins/index.js";
+import {
   getKitTools,
   applyTieredCompression,
   trimToolDescriptions,
   MINIMAL_SYSTEM_PROMPT,
   ToolKitName,
+  classifyTask,
+  TaskCategory,
 } from "./SmartContext.js";
 import { HeartbeatManager } from "./Heartbeat.js";
 import { GlobalIntelligence } from "./GlobalIntelligence.js";
@@ -59,7 +62,7 @@ import { ErrorPatternLibrary } from "../tools/ErrorHandler.js";
 
 export class HiruAgent extends EventEmitter {
   private model: any;
-  private currentTaskCategory: string = "full"; 
+  private currentTaskCategory: TaskCategory = "full"; 
   private activeKits = new Set<ToolKitName>(["core"]);
   public config: HiruConfig;
   public messages: any[] = [];
@@ -177,9 +180,9 @@ export class HiruAgent extends EventEmitter {
             this.activeKits.add("core");
             this.activeKits.add(kitName);
 
-            const status = `✅ Toolkit '${kitName}' loaded. Any previously opened specialized kits have been closed to save tokens. You now have access to ${kitName}-specific tools.`;
-            this.success(`Switched to ${kitName} toolkit`, "system");
-            return status;
+            const statusMsg = `✅ Toolkit '${kitName}' loaded. Any previously opened specialized kits have been closed to save tokens. You now have access to ${kitName}-specific tools.`;
+            this.emit("status", `Switched to ${kitName} toolkit`);
+            return statusMsg;
           }
         };
 

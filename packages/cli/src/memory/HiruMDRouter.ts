@@ -21,6 +21,8 @@ const SECTION_MAP: Record<TaskCategory, (keyof HiruMDSections)[]> = {
   skill:   ["preferences", "rules"],
   plugin:  ["preferences"],
   memory:  ["facts", "preferences", "rules", "context"],
+  core:    ["facts", "rules", "context"],
+  specialist: ["preferences", "rules"],
   full:    ["facts", "preferences", "rules", "context"],
 };
 

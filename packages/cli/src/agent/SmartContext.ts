@@ -1,10 +1,13 @@
 // packages/cli/src/agent/SmartContext.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// TOOL KIT SYSTEM (v1.4.0)
+// TOOL KIT SYSTEM (v1.4.1)
 // Optimized for 90% token reduction by grouping tools into modular kits.
 // ─────────────────────────────────────────────────────────────────────────────
 
 export type ToolKitName = "core" | "web" | "desktop" | "specialist" | "full";
+
+// Backward compatibility for legacy code
+export type TaskCategory = ToolKitName | "chat" | "file" | "shell" | "code" | "skill" | "plugin" | "memory";
 
 export const TOOL_KITS: Record<string, readonly string[]> = {
   core: [
@@ -33,10 +36,8 @@ export function getKitTools(
   const filtered: Record<string, any> = {};
   const allowedNames = new Set<string>();
 
-  // If "full" is in active kits, return everything
   if (activeKits.has("full")) return allTools;
 
-  // Add tools from each active kit
   for (const kitName of activeKits) {
     const toolsInKit = TOOL_KITS[kitName];
     if (toolsInKit) {
@@ -44,7 +45,6 @@ export function getKitTools(
     }
   }
 
-  // Always include the tool to open other toolkits
   allowedNames.add("open_toolkit");
 
   for (const [name, tool] of Object.entries(allTools)) {
@@ -58,6 +58,20 @@ export function getKitTools(
   }
 
   return filtered;
+}
+
+/**
+ * Legacy support for classification (still used in some routers)
+ */
+export function classifyTask(input: string): TaskCategory {
+  return "full"; // Simplified for v1.4.1 as kit-switching is manual/auto via toolkit opener
+}
+
+/**
+ * Legacy support for direct selection (rarely used now but kept for build safety)
+ */
+export function selectTools(all: any, cat: any, input: string = ""): any {
+    return all; 
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -76,7 +90,7 @@ export function applyTieredCompression(messages: any[]): any[] {
 
   return messages.map((msg, idx) => {
     const distFromEnd = total - 1 - idx;
-    if (idx < 2) return msg; // Always keep the first 2 messages (Objective)
+    if (idx < 2) return msg; 
     if (distFromEnd < HOT_ZONE) return msg; 
 
     const isToolResult = msg.role === "tool" || msg.role === "tool_result";
