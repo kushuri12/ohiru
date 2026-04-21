@@ -66,7 +66,7 @@ export class SimpleTUI {
 
   private currentVersion: string;
 
-  constructor(config: HiruConfig, version: string = "1.3.5") {
+  constructor(config: HiruConfig, version: string = "1.3.6") {
     this.config = config;
     this.currentVersion = version;
     this.provider = config.provider;
