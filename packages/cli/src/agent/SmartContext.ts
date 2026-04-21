@@ -75,7 +75,7 @@ export function classifyTask(input: string): TaskCategory {
   }
 
   // Skill & Capability detection — trigger FULL toolset so AI knows everything it can do
-  if (/\b(skill|fitur|feature|kemampuan|bisa apa|capability|apa yang kamu bisa|what can you do|your features|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill|daftar alat|list tools)\b/i.test(lower)) {
+  if (/\b(skill|tools|fitur|feature|kemampuan|bisa apa|capability|apa yang kamu bisa|apa aja|what can you do|your features|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill|daftar alat|list tools)\b/i.test(lower)) {
     return "full";
   }
 
