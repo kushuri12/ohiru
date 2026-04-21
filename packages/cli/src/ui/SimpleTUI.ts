@@ -64,8 +64,11 @@ export class SimpleTUI {
   private logsScrollOffset = 0;
   private searchQuery = "";
 
-  constructor(config: HiruConfig) {
+  private currentVersion: string;
+
+  constructor(config: HiruConfig, version: string = "1.2.6") {
     this.config = config;
+    this.currentVersion = version;
     this.provider = config.provider;
     this.model = config.model;
   }
@@ -407,7 +410,7 @@ export class SimpleTUI {
         modal += drawRow(7, "");
         modal += drawRow(8, chalk.dim("   ESC: cancel  ENTER: save"));
     } else if (this.settingsView === "updateConfirm") {
-        const currentVersion = (this.config as any).version || "1.1.7";
+        const currentVersion = this.currentVersion;
         modal += drawRow(4, " " + chalk.hex(THEME_COLORS.purple).bold("Update Available"));
         modal += drawRow(5, "");
         modal += drawRow(6, "   " + chalk.dim("Current:") + " " + currentVersion);
@@ -954,7 +957,7 @@ export class SimpleTUI {
       
       npm.on("close", (code) => {
         if (code === 0 && latestVersion) {
-          const currentVersion = (this.config as any).version || "1.1.7";
+          const currentVersion = this.currentVersion;
           if (latestVersion !== currentVersion) {
             this.updateAvailableVersion = latestVersion;
             this.settingsView = "updateConfirm";

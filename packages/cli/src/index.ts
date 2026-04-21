@@ -314,7 +314,7 @@ async function main() {
       await handleDoctorCommand();
       process.exit(0);
     } else if (cmd === "settings") {
-      const ui = new SimpleTUI(config);
+      const ui = new SimpleTUI(config, version_cli);
       ui.openSettings();
       ui.onConfigChange = async (newCfg) => {
           config = newCfg;
@@ -341,7 +341,7 @@ async function main() {
   // ── start bot ─────────────────────────────────────────────────────────────
   const ctx = await detectProjectContext(process.cwd());
 
-  const ui = new SimpleTUI(config);
+  const ui = new SimpleTUI(config, version_cli);
   
   // Monkey-patch console to prevent breaking the TUI
   console.log = (...args) => ui.info(args.join(" ").replace(/\u001b\[[0-9;]*m/g, ""));
