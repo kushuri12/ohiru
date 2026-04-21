@@ -138,7 +138,7 @@ export class HiruAgent extends EventEmitter {
     
     // Intelligence Upgrades v2
     this.tokenBudget = new TokenBudget(config.model);
-    this.memoryRouter = new OpenHiruMDRouter(path.join(os.homedir(), ".openhiru", "OPENHIRU.md"));
+    this.memoryRouter = new OpenHiruMDRouter(path.join(process.cwd(), "OPENHIRU.md"));
     this.resultCache = new ToolResultCache(30000);
     this.confidenceChecker = new ConfidenceChecker();
     this.errorLibrary = new ErrorPatternLibrary();
