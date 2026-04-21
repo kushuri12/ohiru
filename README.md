@@ -1,52 +1,48 @@
 # 🦊 OpenHiru
+*Autonomous AI Agent Ecosystem — v1.2.4*
 
-**The Autonomous AI agentic ecosystem for high-tier engineering.**
-
-OpenHiru is a proactive AI agent designed to operate across multiple channels with long-term memory, real-time tool usage, and a modular architecture. It is built to be a resilient, complete, and autonomous digital colleague.
+OpenHiru is a proactive, autonomous AI agentic system designed for high-tier engineering and digital automation. It operates across multiple communication channels with specialized toolsets, persistent memory, and a modular plugin architecture.
 
 ---
 
-### ⚡ Core Capabilities
+### Key Features
 
-*   **Autonomous Engineering:** Multi-step **ReAct** reasoning with self-critique loops.
-*   **3-Layer Memory:** Intelligent context routing, daily logging, and persistent knowledge distillation.
-*   **Multi-Channel Gateway:** Native support for **Telegram**, Discord, WhatsApp, Signal, and Matrix.
-*   **Proactive Heartbeat:** Automatic project monitoring and error detection every 30 minutes.
-*   **Visual Workspace:** Live **Canvas** for rendering code, charts, and UI designs.
-*   **Voice Interface:** Native **TTS/STT** support with custom wake-word listeners ("Hey OpenHiru").
+*   **Autonomous Engineering:** Multi-step reasoning loops with self-critique capabilities.
+*   **Persistent Memory:** 3-layer architecture for long-term knowledge distillation.
+*   **Cross-Channel Gateway:** Native connectivity for Telegram, Discord, WhatsApp, and more.
+*   **Proactive Heartbeat:** Periodic system monitoring and proactive error detection.
+*   **Visual Canvas:** Integrated workspace for live UI mocks, charts, and code visualization.
+*   **Voice Integration:** Whisper-based STT and ElevenLabs TTS with wake-word support.
 
-### 📦 Installation
+### Quick Start
 
-#### One-Step Setup
+#### Installation
 ```bash
-# Windows (PowerShell)
+# Windows
 powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
 
 # Linux / macOS
 curl -fsSL https://ohiru.vercel.app/install.sh | bash
 ```
 
-### 🛠️ CLI Reference
+### CLI Command Map
 
 | Command | Action |
 | :--- | :--- |
-| `openhiru` | Start the primary Telegram agent |
-| `openhiru --setup` | Configure AI providers and bot tokens |
-| `openhiru doctor` | Run system health and dependency checks |
-| `openhiru gateway <start\|stop>` | Manage the WebSocket control plane |
-| `openhiru dashboard start` | Launch the web-based monitoring UI |
-| `openhiru memory distill` | Manually compress and optimize project memory |
-| `openhiru settings` | Open the interactive TUI configuration menu |
+| `openhiru` | Start the primary agent (Telegram mode) |
+| `openhiru --setup` | Configure AI providers and credentials |
+| `openhiru doctor` | Perform system health check |
+| `openhiru gateway start` | Enable the WebSocket control plane |
+| `openhiru dashboard start` | Launch the web management UI |
+| `openhiru settings` | Open the interactive configuration TUI |
 
-### 🧩 Modules
-
-*   **Agent Core (v1.2.3):** Optimized for low latency and high reliability with Anthropic/Google/OpenAI models.
-*   **Skill Manager:** Install and manage external toolkits for specialized tasks.
-*   **Plugin System:** Hot-load GitHub/NPM plugins to extend agent logic.
-*   **Voice Engine:** Whisper-powered transcription and ElevenLabs integration.
+### Technical Specifications
+*   **Engine:** Node.js ESM Architecture.
+*   **Memory Models:** Hierarchical Knowledge Graph + Persistent Summaries.
+*   **Plugin Support:** Hot-loadable GitHub and NPM extensions.
 
 ---
 
 <p align="center">
-  <em>Developed with ❤️ by OpenHiru Team • v1.2.3 — State-of-the-Art.</em>
+  <em>Developed by OpenHiru Team. State-of-the-art autonomous intelligence.</em>
 </p>
