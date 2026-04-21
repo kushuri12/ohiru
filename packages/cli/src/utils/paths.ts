@@ -1,6 +1,7 @@
 import path from "path";
 import os from "os";
 import fs from "fs-extra";
+import crypto from "crypto";
 
 /**
  * .openhiru directory in user's home for persistent data and storage
@@ -22,6 +23,7 @@ export const HIRU_RECEIVED_DIR = path.join(HIRU_DIR, "received");
  * .openhiru/data for internal storage (memory, sessions, etc)
  */
 export const HIRU_DATA_DIR = path.join(HIRU_DIR, "data");
+export const HIRU_PROJECTS_DATA_DIR = path.join(HIRU_DIR, "projects");
 
 /**
  * .openhiru/exports for files created for the user
@@ -49,6 +51,7 @@ export async function ensureHiruDirs() {
   await fs.mkdir(HIRU_SCREENSHOTS_DIR, { recursive: true });
   await fs.mkdir(HIRU_RECEIVED_DIR, { recursive: true });
   await fs.mkdir(HIRU_DATA_DIR, { recursive: true });
+  await fs.mkdir(HIRU_PROJECTS_DATA_DIR, { recursive: true });
   await fs.mkdir(HIRU_EXPORTS_DIR, { recursive: true });
   await fs.mkdir(HIRU_SKILLS_DIR, { recursive: true });
 
@@ -132,4 +135,13 @@ export function resolveSafePath(p: string) {
 export function isSafePath(resolvedPath: string) {
   const cwd = process.cwd();
   return resolvedPath.startsWith(cwd) || resolvedPath.startsWith(HIRU_DIR);
+}
+
+/**
+ * Get the global persistent path for project-specific memory (OPENHIRU.md replacement)
+ */
+export function getProjectMemoryPath(projectRoot: string): string {
+    const hash = crypto.createHash('md5').update(projectRoot).digest('hex').slice(0, 8);
+    const name = path.basename(projectRoot) || "root";
+    return path.join(HIRU_PROJECTS_DATA_DIR, `${name}-${hash}.md`);
 }

@@ -59,6 +59,7 @@ import { OpenHiruMDRouter } from "../memory/HiruMDRouter.js";
 import { ToolResultCache } from "../tools/ToolResultCache.js";
 import { ConfidenceChecker } from "./ConfidenceChecker.js";
 import { ErrorPatternLibrary } from "../tools/ErrorHandler.js";
+import { getProjectMemoryPath } from "../utils/paths.js";
 
 export class HiruAgent extends EventEmitter {
   private model: any;
@@ -138,7 +139,7 @@ export class HiruAgent extends EventEmitter {
     
     // Intelligence Upgrades v2
     this.tokenBudget = new TokenBudget(config.model);
-    this.memoryRouter = new OpenHiruMDRouter(path.join(process.cwd(), "OPENHIRU.md"));
+    this.memoryRouter = new OpenHiruMDRouter(getProjectMemoryPath(process.cwd()));
     this.resultCache = new ToolResultCache(30000);
     this.confidenceChecker = new ConfidenceChecker();
     this.errorLibrary = new ErrorPatternLibrary();
