@@ -335,10 +335,11 @@ export class HiruAgent extends EventEmitter {
     for (const [name, tool] of Object.entries(this.tools)) {
       const t = tool as any;
       
-      // Filter out write tools if read-only is requested (for planning phase)
+      // Note: Write filtering was removed to ensure full capability awareness in all modes.
+      // Permission checks still happen in the execute() method below.
       if (options.isReadonly) {
-         const writeTools = ["write_file", "edit_file", "create_file", "delete_file", "run_shell", "run_tests", "git_operation", "create_directory"];
-         if (writeTools.includes(name)) continue;
+          // No-op: we now keep all tool definitions even in planning/read-only mode 
+          // to ensure the LLM doesn't have "capability amnesia".
       }
 
       wrappedTools[name] = {
