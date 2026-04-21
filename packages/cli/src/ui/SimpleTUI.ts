@@ -4,6 +4,7 @@ import { HiruConfig } from "shared";
 import { PROVIDERS, createProviderInstance, fetchOpenRouterModels, fetchOllamaModels } from "../providers/index.js";
 import { saveConfig } from "../utils/config.js";
 import * as readline from "readline";
+import { spawn } from "child_process";
 
 export interface SimpleLogEntry {
   timestamp: Date;
@@ -41,7 +42,7 @@ export class SimpleTUI {
   private config: HiruConfig;
   private isSettingsOpen = false;
   private settingsIndex = 0;
-  private settingsView: "main" | "provider" | "model" | "channel" | "channelConfig" | "input" = "main";
+  private settingsView: "main" | "provider" | "model" | "channel" | "channelConfig" | "input" | "updateConfirm" = "main";
   private tempInput = "";
   private inputField = ""; // Label for what we are inputting
   private inputTarget = ""; // Key we are currently editing in config
@@ -314,6 +315,7 @@ export class SimpleTUI {
             { label: "Channel", value: channel },
             { label: `Configure ${channel}`, value: "→" },
             { label: "Update API Key", value: "" },
+            { label: "Check for Updates", value: "" },
             { label: "Close", value: "" }
         ];
 
@@ -404,6 +406,23 @@ export class SimpleTUI {
         modal += drawRow(6, "   " + chalk.bgWhite.black(" " + this.tempInput + " "));
         modal += drawRow(7, "");
         modal += drawRow(8, chalk.dim("   ESC: cancel  ENTER: save"));
+    } else if (this.settingsView === "updateConfirm") {
+        const currentVersion = (this.config as any).version || "1.1.7";
+        modal += drawRow(4, " " + chalk.hex(THEME_COLORS.purple).bold("Update Available"));
+        modal += drawRow(5, "");
+        modal += drawRow(6, "   " + chalk.dim("Current:") + " " + currentVersion);
+        modal += drawRow(7, "   " + chalk.green("Latest:") + " " + this.updateAvailableVersion);
+        modal += drawRow(8, "");
+        modal += drawRow(9, " " + chalk.hex(THEME_COLORS.purple).bold("Install update?"));
+        modal += drawRow(10, "");
+        const options = ["Yes, install now", "No, cancel"];
+        for (let i = 0; i < options.length; i++) {
+            const isSelected = this.settingsIndex === i;
+            const dot = isSelected ? " ● " : "   ";
+            modal += drawRow(11 + i, dot + options[i], isSelected ? THEME_COLORS.peach : undefined);
+        }
+        modal += drawRow(14, "");
+        modal += drawRow(15, chalk.dim("   ARROWS: select  ENTER: confirm"));
     }
 
     // Footer actions
@@ -431,8 +450,8 @@ export class SimpleTUI {
     readline.emitKeypressEvents(process.stdin);
     process.stdin.setRawMode(true);
     
-    // Enable Mouse Reporting (1002=Button Event) & Bracketed Paste (2004)
-    process.stdout.write("\x1b[?1002h\x1b[?1006h\x1b[?2004h");
+    // Enable Mouse Reporting (1002=Cell Motion, 1003=All, 1006=SGR)
+    process.stdout.write("\x1b[?1002h\x1b[?1003h\x1b[?1006h");
 
     this.keyHandler = (str: string, key: any) => {
       if (!key) return;
@@ -461,21 +480,18 @@ export class SimpleTUI {
           this.scheduleRender();
           return;
         }
+        this.isSettingsOpen = true;
         this.settingsIndex = 0;
         this.settingsView = "main";
-        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Enable mouse
         this.scheduleRender();
         return;
       }
 
       if (this.isSettingsOpen) {
-        // Fast-path for typing: don't debounce character inputs
-        // Filter out mouse-reporting trash (numeric sequences ending in M/m or containing semicolons)
-        const isMouseTrash = /^[0-9;]+[Mm]$/.test(str) || (str && str.includes(";"));
-        const isTypeable = str && !key.ctrl && !key.meta && !str.startsWith("\x1b") && !isMouseTrash;
-        
-        if (isTypeable || !this.isProcessingKey) {
-          if (!isTypeable) this.isProcessingKey = true;
+        if (this.settingsView === "input") {
+          this.handleSettingsKey(key, str);
+        } else if (!this.isProcessingKey) {
+          this.isProcessingKey = true;
           this.handleSettingsKey(key, str).finally(() => {
             this.isProcessingKey = false;
           });
@@ -509,19 +525,9 @@ export class SimpleTUI {
       if (this.isRunning) this.scheduleRender();
     };
 
-    // RAW DATA LISTENER for mouse & bracketed paste
+    // RAW DATA LISTENER for mouse (bypasses readline keypress filtering)
     this.dataHandler = (chunk: Buffer) => {
         const s = chunk.toString();
-
-        // 0. Bracketed Paste Handling (\x1b[200~ ... \x1b[201~ )
-        if (s.includes("\x1b[200~")) {
-            const pasted = s.replace(/\x1b\[200~/g, "").replace(/\x1b\[201~/g, "");
-            if (this.isSettingsOpen && this.settingsView === "input") {
-                this.tempInput += pasted;
-                this.scheduleRender();
-            }
-            return;
-        }
 
         // 1. Instant Escape Detection (bypasses readline delay)
         if (chunk.length === 1 && chunk[0] === 27) {
@@ -541,8 +547,10 @@ export class SimpleTUI {
                 const upDown = match[4];
                 
                 const isClick = (btn === 0 && upDown === "M");
+                // Movement codes often range from 32-35 or are reported with 67
+                const isHover = (btn >= 32 && btn <= 35) || btn === 67;
                 
-                if (isClick) {
+                if (isClick || isHover) {
                     this.handleMouseEvent(x, y, isClick);
                 }
             }
@@ -585,22 +593,25 @@ export class SimpleTUI {
           this.success(`Model set to ${this.tempInput}`, "settings");
         }
         this.settingsView = "main";
-        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Re-enable mouse
         this.settingsIndex = this.inputField.includes("API Key") ? 2 : 1;
         this.scheduleRender();
         return;
       }
       if (key.name === "escape") {
         this.settingsView = "main";
-        process.stdout.write("\x1b[?1002h\x1b[?1006h"); // Re-enable mouse
         this.scheduleRender();
         return;
       }
       if (key.name === "backspace") {
         this.tempInput = this.tempInput.slice(0, -1);
-      } else if (str && !key.ctrl && !key.meta && !str.startsWith("\x1b")) {
-        const isMouseTrash = /^[0-9;]+[Mm]$/.test(str) || str.includes(";");
-        if (!isMouseTrash) this.tempInput += str;
+      } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
+        // Tolak escape sequences (mouse, dll) tapi terima printable chars dan paste
+        if (!key.sequence?.includes('\x1b')) {
+          const code = str.charCodeAt(0);
+          if (code >= 32 && code < 127) {
+            this.tempInput += str;
+          }
+        }
       }
       this.scheduleRender();
       return;
@@ -636,8 +647,9 @@ export class SimpleTUI {
       this.settingsIndex = Math.max(0, this.settingsIndex - 1);
       this.scheduleRender();
     } else if (key.name === "down") {
-      let max = 5;
-      if (this.settingsView === "channel") max = 4;
+      let max = 6;
+      if (this.settingsView === "updateConfirm") max = 1;
+      else if (this.settingsView === "channel") max = 4;
       else if (this.settingsView === "channelConfig") {
         const fields = this.getChannelFields((this.config as any).channel || "WebChat");
         max = fields.length - 1;
@@ -665,14 +677,11 @@ export class SimpleTUI {
         this.searchQuery = this.searchQuery.slice(0, -1);
         this.settingsIndex = 0;
         this.scheduleRender();
-    } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
-        // Strict printable filter for search: A-Z, 0-9, spaces, simple symbols
-        if (/^[a-zA-Z0-9\s._\-\/]$/.test(str)) {
-            this.searchQuery += str;
-            this.settingsIndex = 0;
-            this.scheduleRender();
-        }
-    } else if (key.name === "return") {
+    } else if (str && str.length === 1 && !key.ctrl && !key.meta && str !== '\r' && str !== '\n') {
+        this.searchQuery += str;
+        this.settingsIndex = 0;
+        this.scheduleRender();
+    } else if (key.name === "return" || key.name === "enter") {
       if (this.settingsView === "main") {
         if (this.settingsIndex === 0) { this.settingsView = "provider"; this.settingsIndex = 0; }
         else if (this.settingsIndex === 1) { 
@@ -690,12 +699,15 @@ export class SimpleTUI {
         }
         else if (this.settingsIndex === 4) {
           this.settingsView = "input";
-          process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
           this.inputField = "Enter API Key:";
           this.inputTarget = "";
           this.tempInput = this.config.apiKeys?.[this.config.provider] || this.config.apiKey || "";
         }
-        else if (this.settingsIndex === 5) { 
+        else if (this.settingsIndex === 5) {
+          await this.handleUpdate();
+          return;
+        }
+        else if (this.settingsIndex === 6) { 
             if (!this.isRunning || this.logs.length === 0) {
                 this.stop();
                 process.exit(0);
@@ -708,7 +720,6 @@ export class SimpleTUI {
           const field = fields[this.settingsIndex];
           if (field) {
             this.settingsView = "input";
-            process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
             this.inputField = `Enter ${field.label}:`;
             this.inputTarget = field.key;
             this.tempInput = field.value || "";
@@ -722,20 +733,35 @@ export class SimpleTUI {
         this.success(`Switched channel to ${ch}`, "settings");
         this.settingsView = "main";
         this.settingsIndex = 2;
+      } else if (this.settingsView === "updateConfirm") {
+        if (this.settingsIndex === 0) {
+          // Yes - install update
+          await this.performUpdate();
+        } else {
+          // No - cancel
+          this.settingsView = "main";
+          this.settingsIndex = 0;
+          this.scheduleRender();
+        }
+        return;
       } else if (this.settingsView === "provider") {
         const filtered = PROVIDERS.filter(p => p.id.toLowerCase().includes(this.searchQuery.toLowerCase()));
-        const p = filtered[this.settingsIndex].id;
-        this.config.provider = p;
-        // Pick first model for provider
-        this.config.model = filtered[this.settingsIndex].models[0]?.id || "default";
-        await saveConfig(this.config);
-        this.onConfigChange?.(this.config);
-        this.provider = p;
-        this.model = this.config.model;
-        this.settingsView = "main";
-        this.settingsIndex = 0;
-        this.searchQuery = "";
-        this.success(`Switched provider to ${p}`, "settings");
+        if (filtered[this.settingsIndex]) {
+          const p = filtered[this.settingsIndex].id;
+          this.config.provider = p;
+          // Pick first model for provider
+          this.config.model = filtered[this.settingsIndex].models[0]?.id || "default";
+          await saveConfig(this.config);
+          this.onConfigChange?.(this.config);
+          this.provider = p;
+          this.model = this.config.model;
+          this.settingsView = "main";
+          this.settingsIndex = 0;
+          this.searchQuery = "";
+          this.success(`Switched provider to ${p}`, "settings");
+        }
+        this.scheduleRender();
+        return;
       } else if (this.settingsView === "model") {
         const providerDef = PROVIDERS.find(p => p.id === this.config.provider);
         const staticModels = providerDef?.models.map(m => ({ id: m.id, provider: this.config.provider, tag: m.recommended ? "Best" : "" })) || [];
@@ -752,7 +778,6 @@ export class SimpleTUI {
         if (idx === allModels.length - 1) {
           // "Add Custom Model..." selected
           this.settingsView = "input";
-          process.stdout.write("\x1b[?1002l\x1b[?1006l"); // Disable mouse
           this.inputField = "Enter Model ID (e.g. gpt-4o):";
           this.tempInput = "";
         } else {
@@ -794,8 +819,8 @@ export class SimpleTUI {
     if (this.timer) clearInterval(this.timer);
     if (this.renderTimeout) clearTimeout(this.renderTimeout);
 
-    // Restore original screen buffer & stop mouse/paste reporting
-    process.stdout.write("\x1b[?1049l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?2004l\x1b[?25h");
+    // Restore original screen buffer & stop mouse reporting (1002/1003 for movement)
+    process.stdout.write("\x1b[?1049l\x1b[?1002l\x1b[?1003l\x1b[?1006l\x1b[?25h");
 
     if (this.keyHandler) {
       process.stdin.off("keypress", this.keyHandler);
@@ -845,7 +870,18 @@ export class SimpleTUI {
         return;
     }
 
-    if (this.settingsView === "main") {
+    if (this.settingsView === "input") {
+        return;
+    } else if (this.settingsView === "updateConfirm") {
+        if (relY >= 11 && relY < 13) {
+            const idx = relY - 11;
+            if (this.settingsIndex !== idx) {
+                this.settingsIndex = idx;
+                this.scheduleRender();
+            }
+            if (isClick) this.handleSettingsKey({ name: "return" }, "");
+        }
+    } else if (this.settingsView === "main") {
         if (relY >= 5 && relY < 11) {
             const idx = relY - 5;
             if (this.settingsIndex !== idx) {
@@ -890,6 +926,71 @@ export class SimpleTUI {
             if (isClick) this.handleSettingsKey({ name: "return" }, "");
         }
     }
+  }
+
+  private updateAvailableVersion = "";
+
+  private async handleUpdate(): Promise<void> {
+    this.info("Checking for updates...", "update");
+    
+    return new Promise((resolve) => {
+      const npm = spawn("npm", ["view", "@kushuri12/ohiru", "version"], { 
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      let latestVersion = "";
+      npm.stdout?.on("data", (data) => {
+        latestVersion += data.toString().trim();
+      });
+      
+      npm.on("close", (code) => {
+        if (code === 0 && latestVersion) {
+          const currentVersion = (this.config as any).version || "1.1.7";
+          if (latestVersion !== currentVersion) {
+            this.updateAvailableVersion = latestVersion;
+            this.settingsView = "updateConfirm";
+            this.settingsIndex = 0;
+            this.scheduleRender();
+          } else {
+            this.success("You're already on the latest version!", "update");
+            setTimeout(() => {
+              this.scheduleRender();
+            }, 2000);
+          }
+        } else {
+          this.error("Failed to check for updates", "update");
+        }
+        resolve();
+      });
+    });
+  }
+
+  private async performUpdate(): Promise<void> {
+    this.info("Installing update...", "update");
+    
+    return new Promise((resolve) => {
+      const install = spawn("npm", ["install", "-g", `@kushuri12/ohiru@${this.updateAvailableVersion}`], {
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      install.on("close", (installCode) => {
+        if (installCode === 0) {
+          this.success("Update installed successfully!", "update");
+          this.info("Restarting...", "update");
+          setTimeout(() => {
+            process.exit(0); // Exit to let process manager restart
+          }, 1000);
+        } else {
+          this.error("Failed to install update", "update");
+          this.settingsView = "main";
+          this.settingsIndex = 0;
+          this.scheduleRender();
+        }
+        resolve();
+      });
+    });
   }
 
   public clear(): void {

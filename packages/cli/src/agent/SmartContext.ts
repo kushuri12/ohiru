@@ -168,8 +168,8 @@ export function selectTools(
       const userQuery = input.toLowerCase();
       
       // Inclusion criteria:
-      // 1. Task category is 'skill' or 'full'
-      // 2. Skill name is mentioned in user message
+      // 1. Task category is 'skill'
+      // 2. Skill name is mentioned in user message 
       // 3. It's a 'Library' skill (pre-selected high-quality core tools)
       const isRelevancyMatch = userQuery.includes(skillName.replace(/_/g, " "));
       const isCategoryMatch  = category === "skill";
