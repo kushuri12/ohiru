@@ -437,13 +437,24 @@ export class HiruAgent extends EventEmitter {
     // Modular Soul Injection (OpenClaw style)
     const modularSoul: any = {};
     try {
-       const soulPath = path.join(ctx.root, "SOUL.md");
-       const idPath = path.join(ctx.root, "IDENTITY.md");
-       const userPath = path.join(ctx.root, "USER.md");
+       // 1. Check PROJECT LOCAL paths
+       const localSoul = path.join(ctx.root, "SOUL.md");
+       const localId = path.join(ctx.root, "IDENTITY.md");
+       const localUser = path.join(ctx.root, "USER.md");
        
-       if (fs.existsSync(soulPath)) modularSoul.soul = fs.readFileSync(soulPath, "utf-8");
-       if (fs.existsSync(idPath)) modularSoul.identity = fs.readFileSync(idPath, "utf-8");
-       if (fs.existsSync(userPath)) modularSoul.user = fs.readFileSync(userPath, "utf-8");
+       // 2. Check GLOBAL paths (~/.openhiru/)
+       const globalSoul = path.join(os.homedir(), ".openhiru", "SOUL.md");
+       const globalId = path.join(os.homedir(), ".openhiru", "IDENTITY.md");
+       const globalUser = path.join(os.homedir(), ".openhiru", "USER.md");
+       
+       if (fs.existsSync(localSoul)) modularSoul.soul = fs.readFileSync(localSoul, "utf-8");
+       else if (fs.existsSync(globalSoul)) modularSoul.soul = fs.readFileSync(globalSoul, "utf-8");
+       
+       if (fs.existsSync(localId)) modularSoul.identity = fs.readFileSync(localId, "utf-8");
+       else if (fs.existsSync(globalId)) modularSoul.identity = fs.readFileSync(globalId, "utf-8");
+       
+       if (fs.existsSync(localUser)) modularSoul.user = fs.readFileSync(localUser, "utf-8");
+       else if (fs.existsSync(globalUser)) modularSoul.user = fs.readFileSync(globalUser, "utf-8");
     } catch (e) {
        // Ignore FS errors in prompt builder
     }
