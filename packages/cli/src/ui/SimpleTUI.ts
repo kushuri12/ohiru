@@ -253,6 +253,14 @@ export class SimpleTUI {
         buf += "\x1b[?25l";
     }
 
+    // Update notification in bottom right
+    if (this.updateAvailableVersion) {
+        const updateStr = ` Update v${this.updateAvailableVersion} available! [ctrl+u] `;
+        const updateTxt = chalk.bgHex(THEME_COLORS.purple).white.bold(updateStr);
+        const updateLen = updateStr.length;
+        buf += this.at(rows - 1, cols - updateLen) + updateTxt;
+    }
+
     // Clear everything below the buffer to prevent duplication
     buf += "\x1b[J";
     buf += "\x1b[" + rows + ";1H";
@@ -495,6 +503,18 @@ export class SimpleTUI {
         this.settingsView = "main";
         this.scheduleRender();
         return;
+      }
+
+      if (key.ctrl && key.name === "u") {
+          if (this.updateAvailableVersion) {
+              this.isSettingsOpen = true;
+              this.settingsView = "updateConfirm";
+              this.settingsIndex = 0;
+              this.scheduleRender();
+          } else {
+              this.info("No updates available at the moment.", "system");
+          }
+          return;
       }
 
       if (this.isSettingsOpen) {
