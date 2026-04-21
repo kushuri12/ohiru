@@ -4,7 +4,7 @@
 </p>
 
 # 🦊 OpenHiru
-**Full-stack Autonomous AI Agent Ecosystem — v1.2.5**
+**Full-stack Autonomous AI Agent Ecosystem**
 
 OpenHiru is a production-ready, autonomous AI agentic system designed for complex engineering workflows and digital automation. It combines hierarchical memory, cross-platform connectivity, and a modular tool architecture into a seamless command-line experience.
 

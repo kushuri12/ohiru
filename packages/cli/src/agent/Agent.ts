@@ -172,9 +172,13 @@ export class HiruAgent extends EventEmitter {
             required: ["kitName"]
           },
           execute: async ({ kitName }: { kitName: ToolKitName }) => {
+            // Exclusive Kit logic: Clear all non-core kits before adding the new one
+            this.activeKits.clear();
+            this.activeKits.add("core");
             this.activeKits.add(kitName);
-            const status = `✅ Toolkit '${kitName}' loaded. You now have access to ${kitName}-specific tools. Please proceed with your task using these new capabilities.`;
-            this.success(`Toolkit '${kitName}' opened`, "system");
+
+            const status = `✅ Toolkit '${kitName}' loaded. Any previously opened specialized kits have been closed to save tokens. You now have access to ${kitName}-specific tools.`;
+            this.success(`Switched to ${kitName} toolkit`, "system");
             return status;
           }
         };
