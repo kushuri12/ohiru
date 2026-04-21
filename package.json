@@ -1,6 +1,6 @@
 {
   "name": "@kushuri12/ohiru",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "OpenHiru — AI agent controlled via Telegram",
   "bin": {
     "ohiru": "./packages/cli/dist/index.js",
@@ -44,7 +44,7 @@
     "@whiskeysockets/baileys": "^6.6.0",
     "ai": "latest",
     "ai-sdk-ollama": "^3.8.2",
-    "axios": "^1.14.0",
+    "axios": "1.7.9",
     "better-sqlite3": "latest",
     "chalk": "^5.3.0",
     "cheerio": "^1.2.0",

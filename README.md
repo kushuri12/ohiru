@@ -1,9 +1,9 @@
 <h1 align="center">
-  🦞 O-HIRU — THE OVERPOWERED AI AGENT
+  🦊 O-HIRU — THE OVERPOWERED AI AGENT
 </h1>
 
 <p align="center">
-  <strong>The #1 Personal Autonomous AI Agent. Beyond OpenClaw Parity.</strong>
+  <strong>The #1 Personal Autonomous AI Agent. Built for Speed and Precision.</strong>
 </p>
 
 <p align="center">
@@ -16,11 +16,11 @@
 
 ## ⚡ WHAT IS O-HIRU?
 
-**OpenHiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Inspired by OpenClaw but evolved for maximum performance, OpenHiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
+**OpenHiru** is a world-class, autonomous AI agentic system designed to be your most capable digital colleague. Evolved for maximum performance, OpenHiru operates across 20+ communication channels (Discord, Slack, WhatsApp, Signal, Matrix), features a 3-layer memory architecture, and a proactive "heartbeat" for autonomous task monitoring.
 
 ## 🚀 KEY MODULES
 
-### 🧠 Autonomous Brain (v1.1.0)
+### 🧠 Autonomous Brain (v1.2.2)
 - **ReAct Loop:** Deep multi-step reasoning (Reason + Act) before every execution.
 - **Self-Critique:** Agent audits its own output for errors before reporting.
 - **Context Compressor:** Intelligent summarization so the agent never "forgets" in long threads.
@@ -67,4 +67,4 @@ powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
 OpenHiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
 
 ---
-*Developed with ❤️ by OpenHiru Team. v1.1.0 — OVERPOWERED.*
+*Developed with ❤️ by OpenHiru Team. v1.2.2 — OVERPOWERED.*
