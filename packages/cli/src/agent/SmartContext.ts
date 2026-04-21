@@ -43,15 +43,15 @@ const TOOL_GROUPS: Record<string, readonly string[]> = {
 
 // Which tool groups to enable per category
 const CATEGORY_TOOLS: Record<TaskCategory, string[]> = {
-  chat:    ["web"],                                   // ~2 tools
+  chat:    ["web", "file", "shell", "memory"],             // Expanded for better awareness
   web:     ["web"],                                   // ~2 tools
   file:    ["file"],                                  // ~10 tools
   shell:   ["shell", "file"],                         // ~15 tools
   code:    ["file", "shell", "web", "todo"],          // ~18 tools
   desktop: ["desktop", "file", "shell"],              // ~15 tools
-  skill:   ["skill", "file", "shell", "todo"],        // ~13 tools
+  skill:   ["skill", "file", "shell", "todo", "web", "desktop"], // Expanded to show off all tools
   plugin:  ["plugin", "file", "shell"],               // ~13 tools
-  memory:  ["memory"],                                // ~1 tool
+  memory:  ["memory", "file"],                        // ~1 tool
   full:    Object.keys(TOOL_GROUPS) as string[],                  // ALL
 };
 
@@ -74,9 +74,9 @@ export function classifyTask(input: string): TaskCategory {
     return "plugin";
   }
 
-  // Skill & Capability detection
-  if (/\b(skill|fitur|feature|kemampuan|bisa apa|capability|apa yang kamu bisa|what can you do|your features|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill)\b/i.test(lower)) {
-    return "skill";
+  // Skill & Capability detection — trigger FULL toolset so AI knows everything it can do
+  if (/\b(skill|fitur|feature|kemampuan|bisa apa|capability|apa yang kamu bisa|what can you do|your features|create skill|bikin skill|tambah skill|manage skill|hapus skill|test skill|daftar alat|list tools)\b/i.test(lower)) {
+    return "full";
   }
 
   // Memory management
