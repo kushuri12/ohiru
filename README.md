@@ -1,48 +1,62 @@
-# 🦊 OpenHiru
-*Autonomous AI Agent Ecosystem — v1.2.4*
+<p align="center">
+  <img src="https://img.shields.io/npm/v/@kushuri12/ohiru.svg?style=flat-square&color=CC785C" alt="NPM Version" />
+  <img src="https://img.shields.io/badge/capability-autonomous-blue?style=flat-square" alt="Capability" />
+</p>
 
-OpenHiru is a proactive, autonomous AI agentic system designed for high-tier engineering and digital automation. It operates across multiple communication channels with specialized toolsets, persistent memory, and a modular plugin architecture.
+# 🦊 OpenHiru
+**Full-stack Autonomous AI Agent Ecosystem — v1.2.5**
+
+OpenHiru is a production-ready, autonomous AI agentic system designed for complex engineering workflows and digital automation. It combines hierarchical memory, cross-platform connectivity, and a modular tool architecture into a seamless command-line experience.
 
 ---
 
-### Key Features
+### 🚀 Core Architecture
 
-*   **Autonomous Engineering:** Multi-step reasoning loops with self-critique capabilities.
-*   **Persistent Memory:** 3-layer architecture for long-term knowledge distillation.
-*   **Cross-Channel Gateway:** Native connectivity for Telegram, Discord, WhatsApp, and more.
-*   **Proactive Heartbeat:** Periodic system monitoring and proactive error detection.
-*   **Visual Canvas:** Integrated workspace for live UI mocks, charts, and code visualization.
-*   **Voice Integration:** Whisper-based STT and ElevenLabs TTS with wake-word support.
+*   **Autonomous Engineering:** Multi-agent reasoning with **ReAct** loops and recursive sub-agent spawning.
+*   **Hierarchical Memory:** 3-layer persistence (Knowledge Graph, Daily Journals, and Persistent Summaries).
+*   **Universal Gateway:** Integrated adapters for **Telegram**, Discord, WhatsApp, Signal, and Matrix.
+*   **Deep Intelligence:** Proactive system monitoring through a background "heartbeat" for error detection and resolution.
+*   **Visual Logic:** Native **Canvas** workspace for real-time visualization of code, schemas, and UI designs.
+*   **Bimodal Audio:** Whisper-powered STT and optimized TTS for natural voice interaction.
 
-### Quick Start
+---
 
-#### Installation
-```bash
-# Windows
+### 📦 Installation
+
+Get started immediately with our automated installers:
+
+**Windows (PowerShell)**
+```powershell
 powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
+```
 
-# Linux / macOS
+**Linux / macOS (Bash)**
+```bash
 curl -fsSL https://ohiru.vercel.app/install.sh | bash
 ```
 
-### CLI Command Map
+---
+
+### 🛠️ CLI Operations
 
 | Command | Action |
 | :--- | :--- |
-| `openhiru` | Start the primary agent (Telegram mode) |
-| `openhiru --setup` | Configure AI providers and credentials |
-| `openhiru doctor` | Perform system health check |
-| `openhiru gateway start` | Enable the WebSocket control plane |
-| `openhiru dashboard start` | Launch the web management UI |
+| `openhiru` | Launch the main autonomous agent |
+| `openhiru --setup` | Initialize AI providers and platform tokens |
+| `openhiru doctor` | Perform comprehensive system health checks |
+| `openhiru gateway start` | Initialize the WebSocket control plane |
+| `openhiru dashboard start` | Start the web-based orchestration dashboard |
+| `openhiru memory distill` | Manually compress and optimize project knowledge |
 | `openhiru settings` | Open the interactive configuration TUI |
-
-### Technical Specifications
-*   **Engine:** Node.js ESM Architecture.
-*   **Memory Models:** Hierarchical Knowledge Graph + Persistent Summaries.
-*   **Plugin Support:** Hot-loadable GitHub and NPM extensions.
 
 ---
 
+### 🧩 Engineering Overview
+
+*   **Logic Engine:** ESM-native Node.js architecture for high performance.
+*   **Scale:** Supports hundreds of built-in skills and external community plugins.
+*   **Security:** Built-in **Memory Guard** and sandbox execution for tool calls.
+
 <p align="center">
-  <em>Developed by OpenHiru Team. State-of-the-art autonomous intelligence.</em>
+  <em>Developed by OpenHiru Team. State-of-the-Art Autonomous Intelligence.</em>
 </p>
