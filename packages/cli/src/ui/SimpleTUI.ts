@@ -66,7 +66,7 @@ export class SimpleTUI {
 
   private currentVersion: string;
 
-  constructor(config: HiruConfig, version: string = "1.4.3") {
+  constructor(config: HiruConfig, version: string = "1.4.4") {
     this.config = config;
     this.currentVersion = version;
     this.provider = config.provider;
@@ -253,11 +253,18 @@ export class SimpleTUI {
         buf += "\x1b[?25l";
     }
 
-    // Update notification in bottom right
+    // 3. Persistent Version Display (Bottom Right)
+    const verStr = ` OpenHiru v${this.currentVersion} `;
+    const verTxt = c.dark(verStr);
+    // Rows-0 is usually safe for status info
+    buf += this.at(rows, cols - verStr.length) + verTxt;
+
+    // 4. Update notification (Positioned above version if available)
     if (this.updateAvailableVersion) {
         const updateStr = ` Update v${this.updateAvailableVersion} available! [ctrl+u] `;
         const updateTxt = chalk.bgHex(THEME_COLORS.purple).white.bold(updateStr);
         const updateLen = updateStr.length;
+        // One row above the version string
         buf += this.at(rows - 1, cols - updateLen) + updateTxt;
     }
 
