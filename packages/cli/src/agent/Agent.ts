@@ -392,24 +392,12 @@ export class HiruAgent extends EventEmitter {
     return wrappedTools;
   }
 
-  /**
-   * Smart tool selector — only returns tools relevant to the current task.
-   * This is the #1 token saver: cuts tool definitions from ~5000+ to ~500-1500 tokens.
-   */
   private getSmartTools(options: { isReadonly?: boolean; input?: string } = {}): Record<string, any> {
     const allTools = this.getTools(options);
     
-    // Fallback search input: use provided one or the latest user message
-    const searchInput = options.input || (() => {
-       const lastUser = [...this.messages].reverse().find(m => m.role === "user");
-       return typeof lastUser?.content === "string" ? lastUser.content : "";
-    })();
-
-    // Select only relevant tools based on current task category
-    const selected = selectTools(allTools, this.currentTaskCategory, searchInput);
-    
-    // Trim tool descriptions to max 350 chars for additional savings
-    return trimToolDescriptions(selected);
+    // Smart filtering disabled as per user request to ensure maximum autonomy.
+    // We now always return the full set of available tools.
+    return trimToolDescriptions(allTools);
   }
 
   /**
