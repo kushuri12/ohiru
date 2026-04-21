@@ -42,7 +42,7 @@ export class SimpleTUI {
   private config: HiruConfig;
   private isSettingsOpen = false;
   private settingsIndex = 0;
-  private settingsView: "main" | "provider" | "model" | "channel" | "channelConfig" | "input" | "updateConfirm" = "main";
+  private settingsView: "main" | "provider" | "model" | "channel" | "channelConfig" | "input" | "updateConfirm" | "downloading" = "main";
   private tempInput = "";
   private inputField = ""; // Label for what we are inputting
   private inputTarget = ""; // Key we are currently editing in config
@@ -423,6 +423,13 @@ export class SimpleTUI {
         }
         modal += drawRow(14, "");
         modal += drawRow(15, chalk.dim("   ARROWS: select  ENTER: confirm"));
+    } else if (this.settingsView === "downloading") {
+        modal += drawRow(4, " " + chalk.hex(THEME_COLORS.purple).bold("System Update"));
+        modal += drawRow(5, "");
+        modal += drawRow(7, "   " + chalk.white("Applying Version:") + " " + chalk.yellow(this.updateAvailableVersion));
+        modal += drawRow(9, "   " + chalk.cyan(SPINNER[this.pulse % SPINNER.length]) + " " + chalk.dim(this.downloadOutput.length > 50 ? this.downloadOutput.slice(-50) : this.downloadOutput));
+        modal += drawRow(12, "");
+        modal += drawRow(13, "   " + chalk.dim("Please wait, do not close the terminal..."));
     }
 
     // Footer actions
@@ -929,6 +936,7 @@ export class SimpleTUI {
   }
 
   private updateAvailableVersion = "";
+  private downloadOutput = "";
 
   private async handleUpdate(): Promise<void> {
     this.info("Checking for updates...", "update");
@@ -967,26 +975,49 @@ export class SimpleTUI {
   }
 
   private async performUpdate(): Promise<void> {
-    this.info("Installing update...", "update");
+    this.settingsView = "downloading";
+    this.downloadOutput = "Initiating NPM update...";
+    this.scheduleRender();
     
     return new Promise((resolve) => {
-      const install = spawn("npm", ["install", "-g", `@kushuri12/ohiru@${this.updateAvailableVersion}`], {
+      // Added --force and --prefer-offline for speed and to overcome permissions/busy files
+      const install = spawn("npm", ["install", "-g", `@kushuri12/ohiru@${this.updateAvailableVersion}`, "--force"], {
         shell: true,
         stdio: ['ignore', 'pipe', 'pipe']
+      });
+
+      install.stdout?.on("data", (data) => {
+        const line = data.toString().trim().split('\n').pop();
+        if (line) {
+          this.downloadOutput = line;
+          this.scheduleRender();
+        }
+      });
+
+      install.stderr?.on("data", (data) => {
+        const line = data.toString().trim().split('\n').pop();
+        if (line) {
+           this.downloadOutput = line;
+           this.scheduleRender();
+        }
       });
       
       install.on("close", (installCode) => {
         if (installCode === 0) {
+          this.downloadOutput = "Update completed successfully!";
+          this.scheduleRender();
           this.success("Update installed successfully!", "update");
-          this.info("Restarting...", "update");
           setTimeout(() => {
-            process.exit(0); // Exit to let process manager restart
-          }, 1000);
+            process.exit(0); 
+          }, 1500);
         } else {
           this.error("Failed to install update", "update");
-          this.settingsView = "main";
-          this.settingsIndex = 0;
-          this.scheduleRender();
+          this.downloadOutput = "Error: NPM process failed.";
+          setTimeout(() => {
+            this.settingsView = "main";
+            this.settingsIndex = 0;
+            this.scheduleRender();
+          }, 3000);
         }
         resolve();
       });
