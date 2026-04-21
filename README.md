@@ -20,7 +20,7 @@
 
 ## 🚀 KEY MODULES
 
-### 🧠 Autonomous Brain (v1.2.2)
+### 🧠 Autonomous Brain (v1.2.3)
 - **ReAct Loop:** Deep multi-step reasoning (Reason + Act) before every execution.
 - **Self-Critique:** Agent audits its own output for errors before reporting.
 - **Context Compressor:** Intelligent summarization so the agent never "forgets" in long threads.
@@ -67,4 +67,4 @@ powershell -c "irm https://ohiru.vercel.app/install.ps1 | iex"
 OpenHiru operates under the **UNRESTRICTED AUTONOMOUS ENGINEERING AUTHORITY**. It is designed to be proactive, factual, and 100% complete in its code implementations (Zero Truncation Policy).
 
 ---
-*Developed with ❤️ by OpenHiru Team. v1.2.2 — OVERPOWERED.*
+*Developed with ❤️ by OpenHiru Team. v1.2.3 — OVERPOWERED.*
