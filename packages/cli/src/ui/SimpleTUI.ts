@@ -834,6 +834,9 @@ export class SimpleTUI {
     // Use Alternate Screen Buffer for "real app" feel
     process.stdout.write("\x1b[?1049h\x1b[H\x1b[2J\x1b[?25l");
 
+    // Check for updates silently in the background
+    this.checkForUpdatesSilently();
+
     this.timer = setInterval(() => {
       this.pulse++;
       const hasThinking = this.logs.some(l => l.level === "thinking");
@@ -1050,5 +1053,31 @@ export class SimpleTUI {
   public clear(): void {
     this.logs = [];
     if (this.isRunning) this.scheduleRender();
+  }
+
+  private async checkForUpdatesSilently(): Promise<void> {
+    try {
+      const npm = spawn("npm", ["view", "@kushuri12/ohiru", "version"], { 
+        shell: true,
+        stdio: ['ignore', 'pipe', 'pipe']
+      });
+      
+      let latestVersion = "";
+      npm.stdout?.on("data", (data) => {
+        latestVersion += data.toString().trim();
+      });
+      
+      npm.on("close", (code) => {
+        if (code === 0 && latestVersion) {
+          const currentVersion = this.currentVersion;
+          if (latestVersion !== currentVersion) {
+            this.updateAvailableVersion = latestVersion;
+            this.scheduleRender();
+          }
+        }
+      });
+    } catch {
+      // Fail silently for background check
+    }
   }
 }
