@@ -604,6 +604,11 @@ export class HiruAgent extends EventEmitter {
         continue;
       }
 
+      // SEQUENCE FIX: AI SDK requires assistant response after tool results before a new user message
+      if (msg.role === "user" && prev?.role === "tool") {
+        fixed.push({ role: "assistant", content: "Understood. I have processed the tool results." });
+      }
+
       // Merge sequential user/assistant messages (unless they have tools)
       if (prev && msg.role === prev.role && msg.role !== "tool" && !Array.isArray(msg.content) && !Array.isArray(prev.content)) {
         prev.content = `${prev.content}\n\n${msg.content}`;
