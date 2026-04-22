@@ -117,6 +117,7 @@ export class HiruAgent extends EventEmitter {
   private resultCache: ToolResultCache;
   private confidenceChecker: ConfidenceChecker;
   private errorLibrary: ErrorPatternLibrary;
+  private compactor: Compactor;
 
   public async waitReady() {
     return this.readyPromise;
@@ -143,6 +144,7 @@ export class HiruAgent extends EventEmitter {
     this.resultCache = new ToolResultCache(30000);
     this.confidenceChecker = new ConfidenceChecker();
     this.errorLibrary = new ErrorPatternLibrary();
+    this.compactor = new Compactor(this.model);
     
     // Proactive Intelligence
     this.intelligence = new GlobalIntelligence(this, {} as any); // Context updated in waitReady
