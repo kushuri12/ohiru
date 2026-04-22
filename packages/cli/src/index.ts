@@ -23,7 +23,7 @@ import { SimpleTUI } from "./ui/SimpleTUI.js";
 
 import ora from "ora";
 
-export const version_cli = "1.4.7";
+export const version_cli = "1.4.8";
 
 async function main() {
   await ensureHiruDirs();
@@ -90,9 +90,16 @@ async function main() {
 
   // ── self-respawn for memory limit ─────────────────────────────────────────
   const targetMaxMem = (config as any).maxMemoryMB || 4096;
-  if (!process.env.HIRU_RESPAWNED && targetMaxMem > 1024) {
+  const currentMaxMemFlag = process.execArgv.find(a => a.startsWith("--max-old-space-size="));
+  
+  if (!process.env.HIRU_RESPAWNED && (!currentMaxMemFlag || parseInt(currentMaxMemFlag.split("=")[1]) < targetMaxMem)) {
     const { spawn } = await import("child_process");
+    
+    // Filter out existing memory flags to avoid duplication
+    const filteredExecArgv = process.execArgv.filter(a => !a.startsWith("--max-old-space-size="));
+    
     const child = spawn(process.argv[0], [
+      ...filteredExecArgv,
       `--max-old-space-size=${targetMaxMem}`,
       ...process.argv.slice(1),
     ], {
