@@ -9,7 +9,7 @@ function getFiles(dir) {
         const stat = fs.statSync(file);
         if (stat && stat.isDirectory()) {
             results = results.concat(getFiles(file));
-        } else if (file.endsWith('.ts') || file.endsWith('.js')) {
+        } else if (file.endsWith('.ts') || file.endsWith('.tsx') || file.endsWith('.js') || file.endsWith('.jsx')) {
             results.push(file);
         }
     });
@@ -24,8 +24,15 @@ files.forEach(file => {
     const content = fs.readFileSync(file, 'utf8');
     const matches = content.matchAll(/from\s+['"]([^'"]+)['"]/g);
     for (const match of matches) {
-        const imp = match[1];
+        let imp = match[1];
         if (!imp.startsWith('.') && !imp.startsWith('/') && !imp.startsWith('@ohiru/') && imp !== 'shared') {
+            // Handle scoped packages
+            if (imp.startsWith('@')) {
+                const parts = imp.split('/');
+                imp = `${parts[0]}/${parts[1]}`;
+            } else {
+                imp = imp.split('/')[0];
+            }
             imports.add(imp);
         }
     }
@@ -33,8 +40,14 @@ files.forEach(file => {
     // Also check dynamic imports
     const dynamicMatches = content.matchAll(/import\(['"]([^'"]+)['"]\)/g);
     for (const match of dynamicMatches) {
-        const imp = match[1];
+        let imp = match[1];
         if (!imp.startsWith('.') && !imp.startsWith('/') && !imp.startsWith('@ohiru/') && imp !== 'shared') {
+            if (imp.startsWith('@')) {
+                const parts = imp.split('/');
+                imp = `${parts[0]}/${parts[1]}`;
+            } else {
+                imp = imp.split('/')[0];
+            }
             imports.add(imp);
         }
     }
