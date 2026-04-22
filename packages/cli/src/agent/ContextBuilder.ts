@@ -39,7 +39,7 @@ To maximize token efficiency, your tools are grouped into modular kits.
 - **specialist**: Skill management, plugins, and recursive agents.
 
 **PROTOCOL**: If you need a tool from a disabled kit, you MUST call **open_toolkit(kitName)**. 
-**NOTE**: You can only have ONE specialized kit (web, desktop, OR specialist) active at a time. Opening a new kit will automatically close the previous one to save tokens. The 'core' kit is always available.
+**NOTE**: After calling **open_toolkit**, you MUST end your turn. You can only have ONE specialized kit (web, desktop, OR specialist) active at a time. Opening a new kit will automatically close the previous one to save tokens. The 'core' kit is always available.
 
 ## ⚖️ EXECUTION PROTOCOL
 - Follow planning -> execution lifecycle strictly.

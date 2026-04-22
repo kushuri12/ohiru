@@ -1071,8 +1071,12 @@ export class HiruAgent extends EventEmitter {
               const isDuplicate = this.messages.slice(-5).some(existing => 
                 existing.role === m.role && this.contentFingerprint(existing.content) === fp
               );
-              if (isDuplicate) continue;
-              this.messages.push({ id: uuidv4(), role: m.role, content: m.content });
+              
+              const hasTools = Array.isArray(m.content) && m.content.some((c: any) => c.type === 'tool-call' || c.type === 'tool-result');
+              const isToolMsg = m.role === 'tool' || (m as any).toolCallId;
+
+              if (isDuplicate && !hasTools && !isToolMsg) continue;
+              this.messages.push({ ...m, id: uuidv4() });
             }
             this.trimMessages();
         }
@@ -1318,8 +1322,12 @@ export class HiruAgent extends EventEmitter {
               const isDuplicate = this.messages.slice(-5).some(existing => 
                 existing.role === m.role && this.contentFingerprint(existing.content) === fp
               );
-              if (isDuplicate) continue;
-              this.messages.push({ id: uuidv4(), role: m.role, content: m.content });
+              
+              const hasTools = Array.isArray(m.content) && m.content.some((c: any) => c.type === 'tool-call' || c.type === 'tool-result');
+              const isToolMsg = m.role === 'tool' || (m as any).toolCallId;
+
+              if (isDuplicate && !hasTools && !isToolMsg) continue;
+              this.messages.push({ ...m, id: uuidv4() });
             }
             this.trimMessages();
         }
