@@ -1,6 +1,6 @@
 {
   "name": "@ohiru/dashboard",
-  "version": "1.5.5",
+  "version": "1.5.7",
   "description": "The O-Hiru Web UI Dashboard",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
