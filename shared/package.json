@@ -1,10 +1,10 @@
 {
-  "name": "shared",
-  "version": "1.5.7",
-  "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
-  "scripts": {
-    "build": "tsc -b"
-  }
+    "name":  "shared",
+    "version":  "1.7.1",
+    "type":  "module",
+    "main":  "dist/index.js",
+    "types":  "dist/index.d.ts",
+    "scripts":  {
+                    "build":  "tsc -b"
+                }
 }
