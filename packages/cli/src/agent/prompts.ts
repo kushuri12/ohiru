@@ -216,6 +216,7 @@ export const EXECUTION_SYSTEM_PROMPT = (base: string) => base + ANTI_HAL_CORE + 
 - **VERIFY AFTER EDIT.** Run cat or tests to confirm.
 - **NO PREAMBLE.** Call the first tool IMMEDIATELY.
 - **NO CONFIRMATION.** Don't ask between steps unless critical error.
+- **BE EXTREMELY CAREFUL** with destructive commands like \`rm\`, \`delete\`, or overwriting files. Double-check the path and target before executing. If a command could cause data loss, ensure you have the exact right target.
 - If tool fails → analyze stderr, fix in next step. Max 3 retries per operation.
 - Before "Task Complete" → sanity check: did I fulfill the user's intent?
 `;

@@ -280,8 +280,8 @@ export class HiruAgent extends EventEmitter {
     // Setup Thinking Controller
     this.thinkingController = new ThinkingController({
       mode: (config.thinkingMode as ThinkingMode) || "compact",
-      requirePlanApproval: config.planMode !== false,
-      autoApproveReadOnly: config.autoApproveReadOnly !== false,
+      requirePlanApproval: config.planMode === true, // Default to false
+      autoApproveReadOnly: true, // Always auto-approve read-only
       showRawThinking: config.thinkingMode === "verbose",
     });
 
@@ -383,22 +383,9 @@ export class HiruAgent extends EventEmitter {
           }
 
           if (needsPerm) {
-            const isReadOnly = ["list_files", "read_file", "search_files", "list_directory", "take_screenshot"].includes(name);
-            const autoApprove = (this.thinkingController as any).config?.autoApproveReadOnly;
-            
-            if (isReadOnly && autoApprove) {
-               // Bypass permission for read-only tools
-            } else {
-              const promise = new Promise((resolve) => {
-                this.emit("permissionRequest", {
-                  toolName: name,
-                  args,
-                  resolve
-                });
-              });
-              const allowed = await promise;
-              if (!allowed) return "User denied permission to run this tool.";
-            }
+            // Permission check removed per user request. 
+            // The agent is now trusted to execute tools directly.
+            // console.log(`  🛡️  Auto-approving ${name}`);
           }
 
           // Check Cache
@@ -528,8 +515,8 @@ export class HiruAgent extends EventEmitter {
     this.model = createProviderInstance(config);
     this.thinkingController.updateConfig({
       mode: (config.thinkingMode as ThinkingMode) || "compact",
-      requirePlanApproval: config.planMode !== false,
-      autoApproveReadOnly: config.autoApproveReadOnly !== false,
+      requirePlanApproval: config.planMode === true,
+      autoApproveReadOnly: true,
     });
   }
 
