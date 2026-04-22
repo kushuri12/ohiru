@@ -1,6 +1,6 @@
 {
     "name":  "@ohiru/gateway",
-    "version":  "1.7.2",
+    "version":  "1.7.3",
     "description":  "The O-Hiru WebSocket Control Plane",
     "main":  "dist/index.js",
     "types":  "dist/index.d.ts",

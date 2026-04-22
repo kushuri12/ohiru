@@ -1,6 +1,6 @@
 {
     "name":  "@ohiru/canvas",
-    "version":  "1.7.2",
+    "version":  "1.7.3",
     "description":  "The O-Hiru Canvas (Live Visual Workspace)",
     "main":  "dist/index.js",
     "types":  "dist/index.d.ts",
