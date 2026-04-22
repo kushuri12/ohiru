@@ -560,14 +560,14 @@ export class HiruAgent extends EventEmitter {
 
   private computeAdaptedMessages(messages: any[]): any[] {
     const raw: any[] = [];
-    const MAX_SHRED = 8000; 
+    const MAX_SHRED = 8000;
     const seenFingerprints = new Set<string>();
 
+    // 1. First pass: Normalize and shred
     for (let i = 0; i < messages.length; i++) {
       const msg = { ...messages[i] };
       const isLast = i === messages.length - 1;
 
-      // Type normalization
       if (msg.role === "tool_result") msg.role = "tool";
 
       const hasTools = Array.isArray(msg.content) && msg.content.some((c: any) => c.type === "tool-call" || c.type === "tool-result");
@@ -579,39 +579,75 @@ export class HiruAgent extends EventEmitter {
 
       if (msg.role === "user" || msg.role === "assistant") {
         if (!msg.content && !Array.isArray(msg.content)) continue;
-        
-        // Dedup non-tool messages
         const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
         if (seenFingerprints.has(fp) && !isLast && !hasTools) continue;
         seenFingerprints.add(fp);
-        raw.push(msg); 
+        raw.push(msg);
       } else if (msg.role === "tool") {
         if (Array.isArray(msg.content)) {
           raw.push(msg);
         } else {
-          raw.push({ role: "tool", content: msg.content || msg.result || "", toolCallId: msg.toolCallId || msg.id });
+          // ENSURE toolCallId exists. If missing, this message is corrupted and must be dropped
+          const tcid = msg.toolCallId || (msg as any).id;
+          if (tcid && tcid.length < 25) { // Tool IDs are usually short, UUIDs are 36
+             raw.push({ role: "tool", content: msg.content || msg.result || "", toolCallId: tcid });
+          }
         }
       } else if (msg.role === "system") {
         raw.push({ role: "user", content: `[System]: ${msg.content}` });
       }
     }
 
-    const fixed: any[] = [];
+    // 2. Second pass: Group tools with their assistants
+    const sequence: any[] = [];
+    const pendingResults = new Map<string, any>(); // toolCallId -> tool message
+    
+    // Extract all tool results first to re-align them
+    for (const msg of raw) {
+      if (msg.role === "tool") {
+        if (Array.isArray(msg.content)) {
+           msg.content.forEach((p: any) => { if (p.toolCallId) pendingResults.set(p.toolCallId, { role: "tool", content: p.result || "", toolCallId: p.toolCallId }); });
+        } else if (msg.toolCallId) {
+           pendingResults.set(msg.toolCallId, msg);
+        }
+      }
+    }
+
     for (let i = 0; i < raw.length; i++) {
       const msg = raw[i];
+      if (msg.role === "tool") continue; // Handled by assistant pairing
+
+      sequence.push(msg);
+
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        const toolCalls = msg.content.filter((p: any) => p.type === "tool-call");
+        for (const tc of toolCalls) {
+          const result = pendingResults.get(tc.toolCallId);
+          if (result) {
+            sequence.push(result);
+            pendingResults.delete(tc.toolCallId); // Prevent double-adding
+          }
+        }
+      }
+    }
+
+    // 3. Final Polish: Fix Role Sequences (AI SDK requirements)
+    const fixed: any[] = [];
+    for (let i = 0; i < sequence.length; i++) {
+      const msg = sequence[i];
       const prev = fixed.length > 0 ? fixed[fixed.length - 1] : null;
 
-      // Drop orphan tool results
-      if (msg.role === "tool" && (!prev || (prev.role !== "assistant" && prev.role !== "tool"))) {
-        continue;
+      // Ensure no orphan tools
+      if (msg.role === "tool") {
+        if (!prev || (prev.role !== "assistant" && prev.role !== "tool")) continue;
       }
 
-      // SEQUENCE FIX: AI SDK requires assistant response after tool results before a new user message
+      // Add bridge if user follows tool
       if (msg.role === "user" && prev?.role === "tool") {
         fixed.push({ role: "assistant", content: "Understood. I have processed the tool results." });
       }
 
-      // Merge sequential user/assistant messages (unless they have tools)
+      // Merge sequential user/assistant messages
       if (prev && msg.role === prev.role && msg.role !== "tool" && !Array.isArray(msg.content) && !Array.isArray(prev.content)) {
         prev.content = `${prev.content}\n\n${msg.content}`;
         continue;
@@ -620,14 +656,7 @@ export class HiruAgent extends EventEmitter {
       fixed.push(msg);
     }
 
-    // Final safety: ensure no tool message follows a user message
-    return fixed.filter((m, idx) => {
-      if (m.role === "tool") {
-        const p = fixed[idx - 1];
-        return p && (p.role === "assistant" || p.role === "tool");
-      }
-      return true;
-    });
+    return fixed;
   }
 
   /**
