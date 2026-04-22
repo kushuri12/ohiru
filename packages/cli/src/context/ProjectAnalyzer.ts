@@ -34,10 +34,10 @@ export async function detectProjectContext(root: string): Promise<ProjectContext
   let recentCommits: string[] = [];
 
   try {
-    const branchRes = await execa({ shell: true, cwd: root })`git branch --show-current`;
+    const branchRes = await execa("git", ["branch", "--show-current"], { cwd: root });
     gitBranch = branchRes.stdout.trim();
 
-    const commitsRes = await execa({ shell: true, cwd: root })`git log -n 3 --oneline`;
+    const commitsRes = await execa("git", ["log", "-n", "3", "--oneline"], { cwd: root });
     recentCommits = commitsRes.stdout.split("\n").filter(Boolean);
   } catch(e) {
     // Not a git repo

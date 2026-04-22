@@ -23,7 +23,7 @@ import { SimpleTUI } from "./ui/SimpleTUI.js";
 
 import ora from "ora";
 
-export const version_cli = "1.6.5";
+export const version_cli = "1.6.6";
 
 async function main() {
   await ensureHiruDirs();
