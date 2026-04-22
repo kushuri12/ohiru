@@ -1,6 +1,6 @@
 {
   "name": "@ohiru/agents",
-  "version": "1.5.4",
+  "version": "1.5.5",
   "description": "Multi-agent orchestration for O-Hiru",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
