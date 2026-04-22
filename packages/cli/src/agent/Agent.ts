@@ -586,7 +586,7 @@ export class HiruAgent extends EventEmitter {
         } else if (msg.role === "tool" || msg.role === "tool_result") {
           // Keep tool results as they are if they are already in the array format
           if (Array.isArray(msg.content)) {
-            raw.push(msg);
+            raw.push({ ...msg, role: "tool" });
           } else {
             const MAX_TOOL_SHRED = 15000;
             const content = (msg as any).content || (msg as any).result || "";
@@ -660,42 +660,61 @@ export class HiruAgent extends EventEmitter {
   public sanitizeMessages(): void {
     if (!this.messages || this.messages.length === 0) return;
 
-    const cleaned: any[] = [];
     const toolCallRegistry = new Set<string>();
+    const cleaned: any[] = [];
 
-    // Pass 1: Build a list of all tool results we have
+    // Pass 1: Collect all valid tool call IDs from assistant messages
     for (const msg of this.messages) {
-      if (msg.role === "tool" || msg.role === "tool_result") {
-        if (msg.toolCallId) toolCallRegistry.add(msg.toolCallId);
-        if (Array.isArray(msg.content)) {
-          msg.content.forEach((part: any) => {
-            if (part.type === "tool-result" && part.toolCallId) {
-              toolCallRegistry.add(part.toolCallId);
-            }
-          });
+      if (msg.role === "assistant" && Array.isArray(msg.content)) {
+        for (const part of msg.content) {
+          if (part.type === "tool-call" && part.toolCallId) {
+            toolCallRegistry.add(part.toolCallId);
+          }
         }
       }
     }
 
-    // Pass 2: Clean assistant messages that have no matching results
-    for (const msg of this.messages) {
+    // Pass 2: Filter messages
+    for (let i = 0; i < this.messages.length; i++) {
+      const msg = this.messages[i];
+      
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        const originalContent = msg.content;
-        const newContent = originalContent.filter((part: any) => {
+        // Keep only tool calls that have a corresponding result later in history? 
+        // No, keep all tool calls for now, but AI SDK requires results.
+        // Actually, sanitizeMessages usually runs on restoration.
+        
+        // Find if this assistant message has any results in the rest of the history
+        const resultsInHistory = new Set<string>();
+        for (let j = i + 1; j < this.messages.length; j++) {
+          const m = this.messages[j];
+          if (m.role === "tool" && m.toolCallId) resultsInHistory.add(m.toolCallId);
+          if (m.role === "tool" && Array.isArray(m.content)) {
+             m.content.forEach((p: any) => { if (p.toolCallId) resultsInHistory.add(p.toolCallId); });
+          }
+        }
+
+        const newContent = msg.content.filter((part: any) => {
           if (part.type === "tool-call") {
-            const hasResult = toolCallRegistry.has(part.toolCallId);
-            return hasResult;
+            return resultsInHistory.has(part.toolCallId);
           }
           return true;
         });
 
-        // If all tool calls were removed but it was ONLY tool calls, 
-        // we must avoid leaving an empty message.
         if (newContent.length === 0) {
-          cleaned.push({ ...msg, content: "Continuing from internal checkpoint." });
+          cleaned.push({ ...msg, content: "Continuing..." });
         } else {
           cleaned.push({ ...msg, content: newContent });
         }
+      } else if (msg.role === "tool") {
+        // Keep only tool results that have a corresponding tool call in the registry
+        const id = msg.toolCallId;
+        if (id && toolCallRegistry.has(id)) {
+          cleaned.push(msg);
+        } else if (Array.isArray(msg.content)) {
+          const newContent = msg.content.filter((p: any) => p.toolCallId && toolCallRegistry.has(p.toolCallId));
+          if (newContent.length > 0) cleaned.push({ ...msg, content: newContent });
+        }
+        // If no ID or ID not found, drop this orphan tool result
       } else {
         cleaned.push(msg);
       }
@@ -826,6 +845,7 @@ export class HiruAgent extends EventEmitter {
           }
           
           this.emit("error", e);
+          this.sanitizeMessages(); // Clean up corrupted sequences after error
           break;
         }
       }

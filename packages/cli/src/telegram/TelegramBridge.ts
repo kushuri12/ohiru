@@ -268,6 +268,7 @@ Example: send_to_chat({ path: "report.txt", caption: "Here's your report" })`,
     });
 
     this.bot.command("clear", async (ctx) => {
+      this.agent.cleanup();
       this.telegramHistory = [];
       await ctx.reply("🧹 Telegram history cleared. Context is now fresh.");
     });
