@@ -5,6 +5,8 @@ const mappings = [
   { src: 'packages/dashboard/src/ui', dist: 'packages/dashboard/dist/ui' },
   { src: 'packages/canvas/src/ui', dist: 'packages/canvas/dist/ui' },
   { src: 'packages/channels/src/webchat/ui', dist: 'packages/channels/dist/webchat/ui' },
+  { src: 'packages/cli/src/skills/library', dist: 'packages/cli/dist/skills/library' },
+  { src: 'packages/cli/src/agent/GLOBAL_SOUL.md', dist: 'packages/cli/dist/agent/GLOBAL_SOUL.md' },
 ];
 
 mappings.forEach(m => {

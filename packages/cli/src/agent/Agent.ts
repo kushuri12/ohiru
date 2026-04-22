@@ -497,24 +497,10 @@ export class HiruAgent extends EventEmitter {
 
     // If we have a wrapper (like PLANNING_SYSTEM_PROMPT), we must apply it.
     // However, some providers prefer arrays for caching.
-    const isAnthropic = this.config.provider === "anthropic";
-    const isGoogle = this.config.provider === "google";
-
-    if (isAnthropic || isGoogle) {
-      // Return parts for explicit caching
-      return parts.map((p, idx) => {
-        let text = p.text;
-        // If it's the core instruction (idx 0), apply the wrapper rules
-        if (idx === 0 && wrapper) {
-            text = wrapper(text);
-        }
-        return { type: "text", text, cacheControl: p.cacheControl };
-      });
-    }
-
-    // Default to string for others
+    // Default to string for all providers (AI SDK system property expects a string or SystemModelMessage)
     const fullPrompt = parts.map(p => p.text).join("\n");
-    return wrapper ? wrapper(fullPrompt) : fullPrompt;
+    const wrapped = wrapper ? wrapper(fullPrompt) : fullPrompt;
+    return wrapped;
   }
   
   /**
