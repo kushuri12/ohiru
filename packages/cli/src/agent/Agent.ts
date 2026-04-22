@@ -553,54 +553,44 @@ export class HiruAgent extends EventEmitter {
         return JSON.stringify(c).slice(0, 100);
       }).join("|");
     }
-    return JSON.stringify(content || "").slice(0, 500);
+    return JSON.stringify(content || "");
   }
 
   private computeAdaptedMessages(messages: any[]): any[] {
     const raw: any[] = [];
-    const MAX_SHRED = 4000; // Reduced from 8000 — aggressive compression for token savings
-    // Track seen content fingerprints to prevent exact duplicates from entering the adapted array
+    const MAX_SHRED = 8000; 
     const seenFingerprints = new Set<string>();
 
     for (let i = 0; i < messages.length; i++) {
       const msg = { ...messages[i] };
       const isLast = i === messages.length - 1;
 
-      try {
-        if (!isLast && typeof msg.content === "string" && msg.content.length > MAX_SHRED) {
-          msg.content = msg.content.slice(0, MAX_SHRED) + "\n[...content shredded for speed]";
-        }
+      // Type normalization
+      if (msg.role === "tool_result") msg.role = "tool";
 
-        if (msg.role === "user" || msg.role === "assistant") {
-          if (!msg.content && !Array.isArray(msg.content)) continue;
-          
-          // Dedup: skip if we've seen an identical message from the same role recently
-          // EXCEPT if it contains tool calls (important for AI SDK sequence)
-          const hasToolCalls = Array.isArray(msg.content) && msg.content.some((c: any) => c.type === "tool-call");
-          const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
-          if (seenFingerprints.has(fp) && !isLast && !hasToolCalls) {
-            continue; // Skip duplicate
-          }
-          seenFingerprints.add(fp);
-          raw.push(msg); 
-        } else if (msg.role === "tool" || msg.role === "tool_result") {
-          // Keep tool results as they are if they are already in the array format
-          if (Array.isArray(msg.content)) {
-            raw.push({ ...msg, role: "tool" });
-          } else {
-            const MAX_TOOL_SHRED = 15000;
-            const content = (msg as any).content || (msg as any).result || "";
-            let finalContent = content;
-            if (!isLast && typeof content === "string" && content.length > MAX_TOOL_SHRED) {
-                finalContent = content.slice(0, MAX_TOOL_SHRED) + "... [Result shredded for speed]";
-            }
-            raw.push({ role: "tool", content: finalContent, toolCallId: (msg as any).toolCallId || (msg as any).id });
-          }
-        } else if (msg.role === "system") {
-          raw.push({ role: "user", content: `[System]: ${msg.content}` });
+      const hasTools = Array.isArray(msg.content) && msg.content.some((c: any) => c.type === "tool-call" || c.type === "tool-result");
+      const isToolMsg = msg.role === "tool" || (msg as any).toolCallId;
+
+      if (!hasTools && !isToolMsg && !isLast && typeof msg.content === "string" && msg.content.length > MAX_SHRED) {
+        msg.content = msg.content.slice(0, MAX_SHRED) + "\n[...content shredded]";
+      }
+
+      if (msg.role === "user" || msg.role === "assistant") {
+        if (!msg.content && !Array.isArray(msg.content)) continue;
+        
+        // Dedup non-tool messages
+        const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
+        if (seenFingerprints.has(fp) && !isLast && !hasTools) continue;
+        seenFingerprints.add(fp);
+        raw.push(msg); 
+      } else if (msg.role === "tool") {
+        if (Array.isArray(msg.content)) {
+          raw.push(msg);
+        } else {
+          raw.push({ role: "tool", content: msg.content || msg.result || "", toolCallId: msg.toolCallId || msg.id });
         }
-      } catch (e) {
-        console.error("adaptMessages error", e);
+      } else if (msg.role === "system") {
+        raw.push({ role: "user", content: `[System]: ${msg.content}` });
       }
     }
 
@@ -609,112 +599,77 @@ export class HiruAgent extends EventEmitter {
       const msg = raw[i];
       const prev = fixed.length > 0 ? fixed[fixed.length - 1] : null;
 
-      if (msg.role === "tool" && (!prev || prev.role === "user")) {
+      // Drop orphan tool results
+      if (msg.role === "tool" && (!prev || (prev.role !== "assistant" && prev.role !== "tool"))) {
         continue;
       }
 
-      if (msg.role === "user" && prev?.role === "tool") {
-        fixed.push({ role: "assistant", content: "Understood. Continuing." });
-      }
-
-      if (prev && msg.role === prev.role && msg.role !== "tool") {
-        const isPrevArray = Array.isArray(prev.content);
-        const isCurArray = Array.isArray(msg.content);
-
-        if (!isPrevArray && !isCurArray) {
-          // CRITICAL FIX: Don't merge if the content is the same (prevents doubled output)
-          const prevStr = typeof prev.content === "string" ? prev.content : "";
-          const curStr = typeof msg.content === "string" ? msg.content : "";
-          if (prevStr === curStr || prevStr.endsWith(curStr) || curStr.endsWith(prevStr)) {
-            // Skip — duplicate or subset content
-            continue;
-          }
-          prev.content = `${prev.content}\n\n${msg.content}`;
-        } else {
-          const prevArr = isPrevArray ? prev.content : [{ type: "text", text: prev.content }];
-          const curArr = isCurArray ? msg.content : [{ type: "text", text: msg.content }];
-          prev.content = [...prevArr, ...curArr];
-        }
+      // Merge sequential user/assistant messages (unless they have tools)
+      if (prev && msg.role === prev.role && msg.role !== "tool" && !Array.isArray(msg.content) && !Array.isArray(prev.content)) {
+        prev.content = `${prev.content}\n\n${msg.content}`;
         continue;
       }
 
-      fixed.push({ ...msg });
+      fixed.push(msg);
     }
 
-    if (fixed.length > 0) {
-      const last = fixed[fixed.length - 1];
-      const hasToolCalls = Array.isArray(last.content) && last.content.some((c: any) => c.type === "tool-call");
-      
-      if (last.role === "assistant" && !hasToolCalls) {
-        fixed.push({ role: "user", content: "Please continue." });
+    // Final safety: ensure no tool message follows a user message
+    return fixed.filter((m, idx) => {
+      if (m.role === "tool") {
+        const p = fixed[idx - 1];
+        return p && (p.role === "assistant" || p.role === "tool");
       }
-    }
-
-    return fixed;
+      return true;
+    });
   }
+
   /**
    * Sanitizes message history after restoration to prevent ERR_MISSING_TOOL_RESULTS.
    * Scans for assistant messages with tool calls and ensures they are followed by results.
-   * If results are missing, it strips the tool calls from the assistant message.
    */
   public sanitizeMessages(): void {
     if (!this.messages || this.messages.length === 0) return;
 
     const toolCallRegistry = new Set<string>();
-    const cleaned: any[] = [];
-
-    // Pass 1: Collect all valid tool call IDs from assistant messages
+    const resultsRegistry = new Set<string>();
+    
+    // Pass 1: Discover all tool calls and results
     for (const msg of this.messages) {
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        for (const part of msg.content) {
-          if (part.type === "tool-call" && part.toolCallId) {
-            toolCallRegistry.add(part.toolCallId);
-          }
+        msg.content.forEach((p: any) => { if (p.type === "tool-call" && p.toolCallId) toolCallRegistry.add(p.toolCallId); });
+      }
+      if (msg.role === "tool") {
+        if (msg.toolCallId) resultsRegistry.add(msg.toolCallId);
+        if (Array.isArray(msg.content)) {
+          msg.content.forEach((p: any) => { if (p.toolCallId) resultsRegistry.add(p.toolCallId); });
         }
       }
     }
 
-    // Pass 2: Filter messages
+    const cleaned: any[] = [];
     for (let i = 0; i < this.messages.length; i++) {
       const msg = this.messages[i];
       
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        // Keep only tool calls that have a corresponding result later in history? 
-        // No, keep all tool calls for now, but AI SDK requires results.
-        // Actually, sanitizeMessages usually runs on restoration.
-        
-        // Find if this assistant message has any results in the rest of the history
-        const resultsInHistory = new Set<string>();
-        for (let j = i + 1; j < this.messages.length; j++) {
-          const m = this.messages[j];
-          if (m.role === "tool" && m.toolCallId) resultsInHistory.add(m.toolCallId);
-          if (m.role === "tool" && Array.isArray(m.content)) {
-             m.content.forEach((p: any) => { if (p.toolCallId) resultsInHistory.add(p.toolCallId); });
-          }
-        }
-
-        const newContent = msg.content.filter((part: any) => {
-          if (part.type === "tool-call") {
-            return resultsInHistory.has(part.toolCallId);
-          }
+        // Keep tool call ONLY if it has a result later
+        const newContent = msg.content.filter((p: any) => {
+          if (p.type === "tool-call") return resultsRegistry.has(p.toolCallId);
           return true;
         });
-
+        
         if (newContent.length === 0) {
-          cleaned.push({ ...msg, content: "Continuing..." });
+          cleaned.push({ ...msg, content: "..." });
         } else {
           cleaned.push({ ...msg, content: newContent });
         }
       } else if (msg.role === "tool") {
-        // Keep only tool results that have a corresponding tool call in the registry
-        const id = msg.toolCallId;
-        if (id && toolCallRegistry.has(id)) {
-          cleaned.push(msg);
+        // Keep result ONLY if it has a call earlier
+        if (msg.toolCallId) {
+          if (toolCallRegistry.has(msg.toolCallId)) cleaned.push(msg);
         } else if (Array.isArray(msg.content)) {
           const newContent = msg.content.filter((p: any) => p.toolCallId && toolCallRegistry.has(p.toolCallId));
           if (newContent.length > 0) cleaned.push({ ...msg, content: newContent });
         }
-        // If no ID or ID not found, drop this orphan tool result
       } else {
         cleaned.push(msg);
       }
