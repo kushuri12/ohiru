@@ -1,6 +1,6 @@
 {
   "name": "@kushuri12/ohiru",
-  "version": "1.4.9",
+  "version": "1.5.0",
   "description": "OpenHiru — AI agent controlled via Telegram",
   "bin": {
     "ohiru": "./packages/cli/dist/index.js",
