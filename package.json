@@ -1,6 +1,6 @@
 {
   "name": "@kushuri12/ohiru",
-  "version": "1.6.1",
+  "version": "1.6.2",
   "description": "OpenHiru — AI agent controlled via Telegram",
   "bin": {
     "ohiru": "./packages/cli/dist/index.js",
@@ -40,10 +40,13 @@
     "chalk": "^5.3.0",
     "dotenv": "^16.4.5",
     "execa": "^8.0.1",
+    "fs-extra": "^11.2.0",
     "inquirer": "^9.2.16",
-    "node-fetch": "^3.3.2",
-    "ora": "^8.0.1",
-    "uuid": "^9.0.1",
+    "node-fetch": "latest",
+    "node-html-markdown": "^2.0.0",
+    "ora": "latest",
+    "shared": "*",
+    "uuid": "latest",
     "zod": "^3.22.4"
   },
   "devDependencies": {
