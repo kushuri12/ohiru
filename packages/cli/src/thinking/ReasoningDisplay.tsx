@@ -92,6 +92,7 @@ function SectionRow({
   section: ParsedSection;
   isLast: boolean;
   isExpanded: boolean;
+  key?: any;
 }) {
   const config = SECTION_CONFIG[section.name] ?? {
     icon: SYMBOLS.bullet,

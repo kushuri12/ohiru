@@ -151,7 +151,7 @@ export function PlanPresenter({ plan, onChoice }: PlanPresenterProps) {
 
 // \u2500\u2500 SUB-KOMPONEN \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
 
-function StepLine({ step }: { step: ExecutionStep }) {
+function StepLine({ step }: { step: ExecutionStep; key?: any }) {
   return (
     <Box gap={1}>
       <Text color="blackBright">{String(step.number).padStart(2, " ")}.</Text>
@@ -180,7 +180,7 @@ function StepLine({ step }: { step: ExecutionStep }) {
   );
 }
 
-function FileChangeRow({ file }: { file: AffectedFile }) {
+function FileChangeRow({ file }: { file: AffectedFile; key?: any }) {
   const opColors: Record<string, string> = {
     create:    "green",
     modify:    "yellow",
@@ -231,7 +231,7 @@ function ConfidenceBadge({ level }: { level: "high" | "medium" | "low" }) {
 function ChoiceButton({
   label, value, selected
 }: {
-  label: string; value: string; selected: string;
+  label: string; value: string; selected: string; key?: any;
 }) {
   const isSelected = selected === value;
   return (

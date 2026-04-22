@@ -92,6 +92,7 @@ function StepRow({
 }: {
   tracked: TrackedStep;
   isCurrent: boolean;
+  key?: any;
 }) {
   const { step, status, startedAt, finishedAt, errorMessage, toolCallsMade } = tracked;
   const color = STATUS_COLOR[status];

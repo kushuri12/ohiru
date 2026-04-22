@@ -96,7 +96,6 @@ export class HiruAgent extends EventEmitter {
 
   private xmlToolCallCount = 0;
   private realToolCallCount = 0;
-  private compactor: Compactor;
   private activeSnapshot: string = "";
 
   private boundFileProgressHandler: ((event: FileProgressEvent) => void) | null = null;

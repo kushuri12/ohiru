@@ -109,7 +109,7 @@ export class ToolSandbox {
     const limits = TOOL_LIMITS.run_shell;
 
     try {
-      const result = await execa({
+      const result = await execa(command, {
         shell: true,
         cwd,
         timeout: limits.timeoutMs,
@@ -119,7 +119,7 @@ export class ToolSandbox {
           ...process.env,
           NODE_OPTIONS: `--max-old-space-size=${limits.maxMemoryMB}`,
         }
-      })`${command}`;
+      });
 
       return {
         stdout: this.truncateString(result.stdout || "", limits.maxOutputChars),
