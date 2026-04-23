@@ -1,4 +1,13 @@
 #!/usr/bin/env node
+
+// Suppress DEP0190 (shell: true) warnings early
+process.on('warning', (warning: any) => {
+  if (warning && (warning.code === 'DEP0190' || (warning.message && warning.message.includes('DEP0190')))) {
+    // Ignore this specific warning
+    return;
+  }
+});
+
 import fetch, { Headers, Request, Response } from "node-fetch";
 
 // Polyfill fetch for environments where it's missing (Node <18 / certain bundles)
@@ -23,7 +32,7 @@ import { SimpleTUI } from "./ui/SimpleTUI.js";
 
 import ora from "ora";
 
-export const version_cli = "1.7.3";
+export const version_cli = "1.7.4";
 
 async function main() {
   await ensureHiruDirs();
@@ -98,7 +107,7 @@ async function main() {
     // Filter out existing memory flags to avoid duplication
     const filteredExecArgv = process.execArgv.filter(a => !a.startsWith("--max-old-space-size="));
     
-    const child = spawn(process.argv[0], [
+    const child = spawn(process.execPath, [
       ...filteredExecArgv,
       `--max-old-space-size=${targetMaxMem}`,
       ...process.argv.slice(1),
@@ -107,6 +116,10 @@ async function main() {
       env: { ...process.env, HIRU_RESPAWNED: "1" },
     });
     child.on("exit", (code) => process.exit(code || 0));
+    child.on("error", (err) => {
+      console.error(chalk.red(`\n❌ Failed to respawn with higher memory limit: ${err.message}\n`));
+      process.exit(1);
+    });
     return;
   }
 
@@ -412,7 +425,18 @@ async function main() {
   await bridge.start();
 }
 
-main().catch((e) => {
-  console.error(chalk.red(`\n❌ Fatal Analysis: ${e?.message || e}\n`));
-  process.exit(1);
-});
+  // Preserve original console for fatal error reporting
+  const originalConsoleError = console.error;
+  const originalConsoleLog = console.log;
+
+  try {
+    await main();
+  } catch (e: any) {
+    // If we have a TUI instance, make sure it's stopped before printing the fatal error
+    // to the real terminal, otherwise the error will be swallowed or mangled.
+    process.stdout.write("\x1b[?1049l"); // Force restore buffer just in case
+    originalConsoleError(chalk.red(`\n❌ Fatal Error: ${e?.message || e}`));
+    if (e.stack) originalConsoleError(chalk.dim(e.stack));
+    originalConsoleLog("");
+    process.exit(1);
+  }

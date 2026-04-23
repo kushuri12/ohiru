@@ -549,6 +549,7 @@ export class HiruAgent extends EventEmitter {
       return content.map((c: any) => {
         if (typeof c === "string") return c.slice(0, 200);
         if (c?.type === "text") return (c.text || "").slice(0, 200);
+        if (c?.type === "image") return `img:${c.image?.length || "buf"}`;
         if (c?.type === "tool-call") return `tc:${c.toolName}:${c.toolCallId}`;
         if (c?.type === "tool-result") return `tr:${c.toolCallId}`;
         return JSON.stringify(c).slice(0, 100);
@@ -567,6 +568,10 @@ export class HiruAgent extends EventEmitter {
       const msg = { ...messages[i] };
       const isLast = i === messages.length - 1;
 
+      // Strip internal metadata that might break AI SDK schema validation
+      delete (msg as any).id;
+      delete (msg as any).timestamp;
+
       if (msg.role === "tool_result") msg.role = "tool";
 
       const hasTools = Array.isArray(msg.content) && msg.content.some((c: any) => c.type === "tool-call" || c.type === "tool-result");
@@ -578,18 +583,52 @@ export class HiruAgent extends EventEmitter {
 
       if (msg.role === "user" || msg.role === "assistant") {
         if (!msg.content && !Array.isArray(msg.content)) continue;
+        
+        // Clean assistant messages: ensure content is either string or array of valid parts
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+          msg.content = msg.content.map((part: any) => {
+             if (part.type === "tool-call") {
+               return {
+                 type: "tool-call",
+                 toolCallId: part.toolCallId,
+                 toolName: part.toolName,
+                 args: part.args || part.input || {}
+               };
+             }
+             if (part.type === "text") return { type: "text", text: part.text || "" };
+             return part;
+          });
+        }
+
         const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
         if (seenFingerprints.has(fp) && !isLast && !hasTools) continue;
         seenFingerprints.add(fp);
         raw.push(msg);
       } else if (msg.role === "tool") {
+        // AI SDK 3.0+ requires tool messages to have a 'content' array of ToolResultPart
         if (Array.isArray(msg.content)) {
-          raw.push(msg);
+          // Already an array, but let's ensure parts are correct
+          const parts = msg.content.map((p: any) => ({
+            type: "tool-result",
+            toolCallId: p.toolCallId || msg.toolCallId,
+            toolName: p.toolName || (msg as any).toolName || "unknown",
+            result: p.result ?? p.content ?? p ?? "",
+            isError: p.isError || false
+          }));
+          raw.push({ role: "tool", content: parts });
         } else {
-          // ENSURE toolCallId exists. If missing, this message is corrupted and must be dropped
           const tcid = msg.toolCallId || (msg as any).id;
-          if (tcid && tcid.length < 25) { // Tool IDs are usually short, UUIDs are 36
-             raw.push({ role: "tool", content: msg.content || msg.result || "", toolCallId: tcid });
+          if (tcid) { // Removed length restriction as many providers use long IDs/UUIDs
+             raw.push({ 
+               role: "tool", 
+               content: [{ 
+                 type: "tool-result", 
+                 toolCallId: tcid, 
+                 toolName: (msg as any).toolName || "unknown", 
+                 result: msg.content || msg.result || "",
+                 isError: (msg as any).isError || false
+               }] 
+             });
           }
         }
       } else if (msg.role === "system") {
@@ -597,18 +636,16 @@ export class HiruAgent extends EventEmitter {
       }
     }
 
-    // 2. Second pass: Group tools with their assistants
+    // 2. Second pass: Group tools with their assistants (Crucial for sequence validation)
     const sequence: any[] = [];
-    const pendingResults = new Map<string, any>(); // toolCallId -> tool message
+    const pendingResults = new Map<string, any>(); // toolCallId -> tool message parts
     
     // Extract all tool results first to re-align them
     for (const msg of raw) {
       if (msg.role === "tool") {
-        if (Array.isArray(msg.content)) {
-           msg.content.forEach((p: any) => { if (p.toolCallId) pendingResults.set(p.toolCallId, { role: "tool", content: p.result || "", toolCallId: p.toolCallId }); });
-        } else if (msg.toolCallId) {
-           pendingResults.set(msg.toolCallId, msg);
-        }
+        msg.content.forEach((p: any) => {
+          if (p.toolCallId) pendingResults.set(p.toolCallId, p);
+        });
       }
     }
 
@@ -620,12 +657,18 @@ export class HiruAgent extends EventEmitter {
 
       if (msg.role === "assistant" && Array.isArray(msg.content)) {
         const toolCalls = msg.content.filter((p: any) => p.type === "tool-call");
+        const resultsForThisAssistant: any[] = [];
+        
         for (const tc of toolCalls) {
-          const result = pendingResults.get(tc.toolCallId);
-          if (result) {
-            sequence.push(result);
-            pendingResults.delete(tc.toolCallId); // Prevent double-adding
+          const resultPart = pendingResults.get(tc.toolCallId);
+          if (resultPart) {
+            resultsForThisAssistant.push(resultPart);
+            pendingResults.delete(tc.toolCallId);
           }
+        }
+        
+        if (resultsForThisAssistant.length > 0) {
+          sequence.push({ role: "tool", content: resultsForThisAssistant });
         }
       }
     }
@@ -646,8 +689,8 @@ export class HiruAgent extends EventEmitter {
         fixed.push({ role: "assistant", content: "Understood. I have processed the tool results." });
       }
 
-      // Merge sequential user/assistant messages
-      if (prev && msg.role === prev.role && msg.role !== "tool" && !Array.isArray(msg.content) && !Array.isArray(prev.content)) {
+      // Merge sequential user/assistant messages (unless they have complex parts)
+      if (prev && msg.role === prev.role && msg.role !== "tool" && typeof msg.content === "string" && typeof prev.content === "string") {
         prev.content = `${prev.content}\n\n${msg.content}`;
         continue;
       }
