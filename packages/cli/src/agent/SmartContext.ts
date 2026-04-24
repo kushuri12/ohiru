@@ -12,7 +12,8 @@ export type TaskCategory = ToolKitName | "chat" | "file" | "shell" | "code" | "s
 export const TOOL_KITS: Record<string, readonly string[]> = {
   core: [
     "read_file", "write_file", "execute_command", "replace_file_content", 
-    "list_files", "list_directory", "manage_memory", "manage_todo", "open_toolkit"
+    "list_files", "list_directory", "manage_memory", "manage_todo", "open_toolkit",
+    "manage_skills"  // Skill creation is a primary function — must always be accessible
   ],
   web: [
     "search_web", "read_url", "fetch_url"
@@ -50,9 +51,11 @@ export function getKitTools(
   for (const [name, tool] of Object.entries(allTools)) {
     if (allowedNames.has(name)) {
       filtered[name] = tool;
-    } else if (name.startsWith("skill_") && activeKits.has("specialist")) {
+    } else if (name.startsWith("skill_")) {
+      // User-created skills should ALWAYS be accessible — they are the user's tools
       filtered[name] = tool;
-    } else if (name.startsWith("plugin_") && activeKits.has("specialist")) {
+    } else if (name.startsWith("plugin_")) {
+      // Installed plugins should also always be accessible
       filtered[name] = tool;
     }
   }

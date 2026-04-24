@@ -523,24 +523,6 @@ export class HiruAgent extends EventEmitter {
     });
   }
 
-  private adaptMessages(messages: any[]): any[] {
-    // Build a robust hash that captures message count, last ID, AND last content signature
-    // This prevents stale cache when messages are mutated in-place (e.g., by trimMessages)
-    const lastMsg = messages[messages.length - 1];
-    const lastContent = lastMsg?.content;
-    const contentSig = typeof lastContent === "string" 
-      ? lastContent.length.toString() 
-      : Array.isArray(lastContent) 
-        ? `arr_${lastContent.length}` 
-        : "empty";
-    const hash = `${messages.length}_${lastMsg?.id || "none"}_${contentSig}_${messages.length > 1 ? messages[messages.length - 2]?.id || "" : ""}`;
-    if (this.adaptedMessagesCache?.hash === hash) {
-      return this.adaptedMessagesCache.result;
-    }
-    const result = this.computeAdaptedMessages(messages);
-    this.adaptedMessagesCache = { hash, result };
-    return result;
-  }
 
   /**
    * Helper to get a content fingerprint for dedup checks.
@@ -560,17 +542,16 @@ export class HiruAgent extends EventEmitter {
     return JSON.stringify(content || "");
   }
 
-  private computeAdaptedMessages(messages: any[]): any[] {
+  public adaptMessages(messages: Message[]): any[] {
     const raw: any[] = [];
-    const MAX_SHRED = 8000;
     const seenFingerprints = new Set<string>();
+    const MAX_SHRED = 20000;
 
-    // 1. First pass: Normalize and shred
+    // Pass 1: Normalization and Basic Cleaning
     for (let i = 0; i < messages.length; i++) {
       const msg = { ...messages[i] };
       const isLast = i === messages.length - 1;
 
-      // Strip internal metadata that might break AI SDK schema validation
       delete (msg as any).id;
       delete (msg as any).timestamp;
 
@@ -586,7 +567,7 @@ export class HiruAgent extends EventEmitter {
       if (msg.role === "user" || msg.role === "assistant") {
         if (!msg.content && !Array.isArray(msg.content)) continue;
         
-        // Clean assistant messages: ensure content is either string or array of valid parts
+        // Clean assistant messages
         if (msg.role === "assistant" && Array.isArray(msg.content)) {
           msg.content = msg.content.map((part: any) => {
              if (part.type === "tool-call") {
@@ -602,9 +583,9 @@ export class HiruAgent extends EventEmitter {
           }).filter((part: any) => part.type !== "text" || (typeof part.text === "string" && part.text.trim().length > 0));
           
           if (msg.content.length === 0) {
-            msg.content = "✅"; // Prevent empty array which causes AI SDK to crash
+            msg.content = "✅";
           } else {
-             // If ALL parts are text parts, combine them into a single string to prevent provider hallucination
+             // Flatten text-only arrays to strings
              const hasNonText = msg.content.some((p: any) => p.type !== "text");
              if (!hasNonText) {
                 msg.content = msg.content.map((p: any) => p.text).join("\n");
@@ -612,7 +593,7 @@ export class HiruAgent extends EventEmitter {
           }
         }
 
-        // Clean user messages: ensure text parts are not empty
+        // Clean user messages
         if (msg.role === "user" && Array.isArray(msg.content)) {
           msg.content = msg.content.filter((part: any) => part.type !== "text" || (typeof part.text === "string" && part.text.trim().length > 0));
           if (msg.content.length === 0) {
@@ -630,27 +611,25 @@ export class HiruAgent extends EventEmitter {
         seenFingerprints.add(fp);
         raw.push(msg);
       } else if (msg.role === "tool") {
-        // AI SDK 3.0+ requires tool messages to have a 'content' array of ToolResultPart
         if (Array.isArray(msg.content)) {
-          // Already an array, but let's ensure parts are correct
           const parts = msg.content.map((p: any) => ({
             type: "tool-result",
             toolCallId: p.toolCallId || msg.toolCallId,
             toolName: p.toolName || (msg as any).toolName || "unknown",
-            result: p.result ?? p.content ?? p ?? "",
+            result: (p as any).result ?? (p as any).content ?? p ?? "",
             isError: p.isError || false
           }));
           raw.push({ role: "tool", content: parts });
         } else {
           const tcid = msg.toolCallId || (msg as any).id;
-          if (tcid) { // Removed length restriction as many providers use long IDs/UUIDs
+          if (tcid) {
              raw.push({ 
                role: "tool", 
                content: [{ 
                  type: "tool-result", 
                  toolCallId: tcid, 
                  toolName: (msg as any).toolName || "unknown", 
-                 result: msg.content || msg.result || "",
+                 result: msg.content || (msg as any).result || "",
                  isError: (msg as any).isError || false
                }] 
              });
@@ -661,75 +640,35 @@ export class HiruAgent extends EventEmitter {
       }
     }
 
-    // 2. Second pass: Group tools with their assistants (Crucial for sequence validation)
-    const sequence: any[] = [];
-    const pendingResults = new Map<string, any>(); // toolCallId -> tool message parts
-    
-    // Extract all tool results first to re-align them
-    for (const msg of raw) {
-      if (msg.role === "tool") {
-        msg.content.forEach((p: any) => {
-          if (p.toolCallId) pendingResults.set(p.toolCallId, p);
-        });
-      }
-    }
-
+    // Pass 2: Schema Compliance & Dangling Tool Call Cleanup
+    // AI SDK strictly requires: assistant(tool-calls) -> tool(results)
+    const final: any[] = [];
     for (let i = 0; i < raw.length; i++) {
-      const msg = raw[i];
-      if (msg.role === "tool") continue; // Handled by assistant pairing
-
-      sequence.push(msg);
-
-      if (msg.role === "assistant" && Array.isArray(msg.content)) {
-        const toolCalls = msg.content.filter((p: any) => p.type === "tool-call");
-        const resultsForThisAssistant: any[] = [];
-        
-        for (const tc of toolCalls) {
-          const resultPart = pendingResults.get(tc.toolCallId);
-          if (resultPart) {
-            resultsForThisAssistant.push(resultPart);
-            pendingResults.delete(tc.toolCallId);
-          }
+        const msg = raw[i];
+        if (msg.role === "assistant" && Array.isArray(msg.content)) {
+            const toolCallParts = msg.content.filter((p: any) => p.type === "tool-call");
+            if (toolCallParts.length > 0) {
+                // Peek next message. It MUST be a 'tool' message containing results.
+                const nextMsg = raw[i + 1];
+                const hasFollowUpResults = nextMsg && nextMsg.role === "tool";
+                
+                if (!hasFollowUpResults) {
+                    // Critical Schema Violation Prevention
+                    msg.content = msg.content.filter((p: any) => p.type !== "tool-call");
+                    if (msg.content.length === 0) msg.content = "✅ Execution successful.";
+                }
+            }
         }
         
-        if (resultsForThisAssistant.length > 0) {
-          sequence.push({ role: "tool", content: resultsForThisAssistant });
-        } else {
-          // AI SDK FATAL ERROR PREVENTION:
-          // If an assistant message has tool calls, but there are NO results,
-          // the AI SDK will crash. We must strip the tool calls if no results exist.
-          msg.content = msg.content.filter((p: any) => p.type !== "tool-call");
-          if (msg.content.length === 0) msg.content = "✅ Tool execution complete.";
+        // Final sanity check for assistant content
+        if (msg.role === "assistant" && (!msg.content || (Array.isArray(msg.content) && msg.content.length === 0))) {
+            msg.content = "✅";
         }
-      }
+
+        final.push(msg as any);
     }
 
-    // 3. Final Polish: Fix Role Sequences (AI SDK requirements)
-    const fixed: any[] = [];
-    for (let i = 0; i < sequence.length; i++) {
-      const msg = sequence[i];
-      const prev = fixed.length > 0 ? fixed[fixed.length - 1] : null;
-
-      // Ensure no orphan tools
-      if (msg.role === "tool") {
-        if (!prev || (prev.role !== "assistant" && prev.role !== "tool")) continue;
-      }
-
-      // Add bridge if user follows tool
-      if (msg.role === "user" && prev?.role === "tool") {
-        fixed.push({ role: "assistant", content: "Understood. I have processed the tool results." });
-      }
-
-      // Merge sequential user/assistant messages (unless they have complex parts)
-      if (prev && msg.role === prev.role && msg.role !== "tool" && typeof msg.content === "string" && typeof prev.content === "string") {
-        prev.content = `${prev.content}\n\n${msg.content}`;
-        continue;
-      }
-
-      fixed.push(msg);
-    }
-
-    return fixed;
+    return final;
   }
 
   /**
@@ -941,6 +880,18 @@ export class HiruAgent extends EventEmitter {
 
       // Classify task BEFORE any LLM call — determines tool selection for entire turn
       this.currentTaskCategory = typeof input === "string" ? classifyTask(input) : "full";
+
+      // AUTO-TOOLKIT ACTIVATION: Detect skill/plugin keywords and pre-load specialist toolkit
+      // This prevents the critical bug where the AI hallucinates tool calls as raw text
+      // because manage_skills wasn't available in the active toolkit.
+      if (typeof input === "string") {
+        const lower = input.toLowerCase();
+        const needsSpecialist = /(skill|plugin|tambah skill|buat skill|create skill|manage skill|hapus skill|delete skill|test skill|cek_|buatkan.*skill|bikin.*skill)/i.test(lower);
+        if (needsSpecialist && !this.activeKits.has("specialist")) {
+          this.activeKits.add("specialist");
+          this.emit("status", "Auto-loaded specialist toolkit for skill management");
+        }
+      }
 
       // PRE-FLIGHT TOKEN BUDGET CHECK
       const inputStr = typeof input === "string" ? input.trim() : "";
