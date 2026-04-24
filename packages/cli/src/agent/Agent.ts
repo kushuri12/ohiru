@@ -1383,11 +1383,14 @@ export class HiruAgent extends EventEmitter {
       stopWhen: stepCountIs(this.maxIterations),
       abortSignal: this.createAbortSignal(EXECUTION_TIMEOUT),
       maxRetries: 5,
-      maxOutputTokens: 4096,
+      maxOutputTokens: 8192, // Increased for large skill generation code
       onStepFinish: (ev: any) => {
         if (ev.usage) {
           this.tokenUsage.prompt += ev.usage.promptTokens || 0;
           this.tokenUsage.completion += ev.usage.completionTokens || 0;
+        }
+        if (ev.finishReason === "length" || ev.finishReason === "max_tokens") {
+           this.emit("agentError", new Error("Token limit reached during generation. The response was cut off. Try asking for smaller chunks."));
         }
         const respMsgs = ev.response?.messages || ev.responseMessages;
         if (respMsgs) {
@@ -1588,9 +1591,6 @@ export class HiruAgent extends EventEmitter {
              }
           }
           // -----------------------------------------------------------
-
-          this.messages.push({ id: uuidv4(), role: "assistant", content: fullText });
-          this.trimMessages();
       } else if (totalToolCalls === 0) {
           // ✨ OpenClaw Anti-No-Output Step:
           this.emit("status", "Forcing verbal response...");
@@ -1644,9 +1644,10 @@ export class HiruAgent extends EventEmitter {
         ), 
         messages: this.adaptMessages(this.messages),
         tools: isSummary ? {} : this.getTools(), // No tools in summary mode to avoid loops
-        stopWhen: stepCountIs(this.maxIterations), 
+        stopWhen: stepCountIs(this.maxIterations),
         abortSignal: this.currentAbortController?.signal,
         maxRetries: 5,
+        maxOutputTokens: 8192,
         onStepFinish: (ev: any) => {
           if (ev.usage) {
             this.tokenUsage.prompt += ev.usage.promptTokens || 0;
