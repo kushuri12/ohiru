@@ -21,6 +21,7 @@ WHEN TO CREATE A SKILL:
 - DO NOT create skills for one-time simple tasks or file edits
 
 CREATING SKILLS — QUALITY RULES:
+0. ⚠️ CRITICAL: NEVER use manual file creation tools (like create_file, write_to_file, run_command) to create a skill! ALWAYS use manage_skills with action='create'. It will automatically create the folder in ~/.openhiru/skills/.
 1. ALWAYS provide "parameters" as JSON with type, description, required for EVERY arg
 2. For geo/location skills: add "country" param with default "Indonesia" in code
 3. Use JSON APIs (e.g. ?format=j1) NOT plain text APIs — more reliable data
