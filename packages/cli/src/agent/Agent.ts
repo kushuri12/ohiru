@@ -32,7 +32,7 @@ import {
 } from "./prompts.js";
 import { buildSystemPrompt, buildSystemPromptParts, ContextBuilder, PromptPart, ContextBuilderOptions } from "./ContextBuilder.js";
 import { TodoTracker, TodoItem } from "./TodoTracker.js";
-import { SkillManager, createSkillTools } from "../skills/index.js";
+import { SkillManager, createSkillTools, SkillEvolver } from "../skills/index.js";
 import { GlobalMemory, createMemoryTools } from "../memory/index.js";
 import { FileProgressEvent, globalFileProgress } from "../tools/FileProgress.js";
 import { createAgentTool } from "../tools/AgentTool.js";
@@ -92,6 +92,7 @@ export class HiruAgent extends EventEmitter {
   private libraryManager: SkillManager | null = null;
   public pluginManager: PluginManager;
   private globalMemory: GlobalMemory;
+  private skillEvolver: SkillEvolver;
   private skillsReady = false;
 
   private xmlToolCallCount = 0;
@@ -134,6 +135,7 @@ export class HiruAgent extends EventEmitter {
     this.skillManager = new SkillManager();
     this.pluginManager = new PluginManager();
     this.globalMemory = new GlobalMemory();
+    this.skillEvolver = new SkillEvolver(this);
     this.noOpHandler = new NoOpHandler();
     this.planEnforcer = new PlanEnforcer();
     
@@ -899,6 +901,10 @@ export class HiruAgent extends EventEmitter {
       if (input) {
         if (typeof input === "string" && input.trim()) {
            this.messages.push({ id: uuidv4(), role: "user" as const, content: input });
+           // Record instruction for skill pattern detection (fire-and-forget)
+           this.skillEvolver.recordInstruction(input);
+           // Periodically analyze patterns (async, non-blocking)
+           this.skillEvolver.analyzePatterns().catch(() => {});
         } else if (Array.isArray(input)) {
            this.messages.push({ id: uuidv4(), role: "user" as const, content: input });
         }

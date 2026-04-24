@@ -566,7 +566,23 @@ export class SimpleTUI {
     this.dataHandler = (chunk: Buffer) => {
         const s = chunk.toString();
 
-        // 1. Instant Escape Detection (bypasses readline delay)
+        // 1. Swallow ALL escape sequences when the text input view is active.
+        //    This prevents ANY terminal escape code (mouse moves, F-keys, etc.)
+        //    from leaking into the input field via the keypress handler.
+        if (this.isSettingsOpen && this.settingsView === "input") {
+            if (chunk[0] === 27) {
+                // Only allow bare ESC (single byte) to cancel the input view.
+                if (chunk.length === 1) {
+                    this.handleSettingsKey({ name: "escape" }, "").catch(() => {});
+                }
+                // All other escape sequences (mouse, arrows, etc.) are silently dropped.
+                return;
+            }
+            // Let printable data fall through to the keypress handler normally.
+            return;
+        }
+
+        // 2. Instant Escape Detection (bypasses readline delay) for non-input views
         if (chunk.length === 1 && chunk[0] === 27) {
             if (this.isSettingsOpen) {
                 this.handleSettingsKey({ name: "escape" }, "").catch(() => {});
@@ -574,7 +590,7 @@ export class SimpleTUI {
             }
         }
 
-        // 2. Mouse event (SGR format: \x1b[<BTN;X;YM)
+        // 3. Mouse event (SGR format: \x1b[<BTN;X;YM)
         if (s.includes("\x1b[<")) {
             const matches = s.matchAll(/\x1b\[<(\d+);(\d+);(\d+)([Mm])/g);
             for (const match of matches) {
@@ -582,15 +598,18 @@ export class SimpleTUI {
                 const y = parseInt(match[3]);
                 const btn = parseInt(match[1]);
                 const upDown = match[4];
-                
+
+                // Only handle actual button-down clicks (btn 0 = left click, press)
                 const isClick = (btn === 0 && upDown === "M");
-                // Movement codes often range from 32-35 or are reported with 67
+                // Movement codes (32-35, 67) are hover events
                 const isHover = (btn >= 32 && btn <= 35) || btn === 67;
-                
+
                 if (isClick || isHover) {
                     this.handleMouseEvent(x, y, isClick);
                 }
             }
+            // Prevent escape sequences from reaching readline keypress handler
+            return;
         }
     };
 
@@ -641,12 +660,17 @@ export class SimpleTUI {
       }
       if (key.name === "backspace") {
         this.tempInput = this.tempInput.slice(0, -1);
-      } else if (str && str.length === 1 && !key.ctrl && !key.meta) {
-        // Tolak escape sequences (mouse, dll) tapi terima printable chars dan paste
-        if (!key.sequence?.includes('\x1b')) {
-          const code = str.charCodeAt(0);
+      } else if (str && !key.ctrl && !key.meta) {
+        // Guard: reject anything that contains an ESC byte — mouse events,
+        // arrow sequences, etc. should never reach here because dataHandler
+        // already swallows them, but this is the last line of defence.
+        const seq: string = key.sequence ?? str;
+        if (seq.includes('\x1b')) return;
+        // Only accept printable ASCII characters (space → tilde)
+        for (const ch of str) {
+          const code = ch.charCodeAt(0);
           if (code >= 32 && code < 127) {
-            this.tempInput += str;
+            this.tempInput += ch;
           }
         }
       }
@@ -715,6 +739,11 @@ export class SimpleTUI {
         this.settingsIndex = 0;
         this.scheduleRender();
     } else if (str && str.length === 1 && !key.ctrl && !key.meta && str !== '\r' && str !== '\n') {
+        // Reject any key whose sequence contains ESC (mouse/function key leakage)
+        const seq: string = key.sequence ?? str;
+        if (seq.includes('\x1b')) return;
+        const code = str.charCodeAt(0);
+        if (code < 32 || code >= 127) return; // non-printable
         this.searchQuery += str;
         this.settingsIndex = 0;
         this.scheduleRender();

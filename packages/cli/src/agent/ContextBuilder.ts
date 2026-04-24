@@ -156,6 +156,51 @@ To maximize token efficiency, your tools are grouped into modular kits.
     return this.addSection("SNAPSHOT", this.snapshot, true);
   }
 
+  /** Smart skill-saving guidance — only in Telegram mode where persistence matters */
+  addSkillSavingGuidance() {
+    if (!this.options?.isTelegram) return this;
+
+    const skills = this.skillManager?.listSkills() || [];
+    const skillNames = skills.map((s: any) => s.name).join(", ") || "none yet";
+
+    const guidance = `
+## 🧠 SKILL SAVING INTELLIGENCE
+
+You can create **persistent skills** saved to \`~/.openhiru/skills/<name>/\`. These are reusable code modules you can call anytime.
+
+**SAVE A SKILL WHEN:**
+- User asks to "cek", "cari", "tampilkan", "pantau" data dari API (cuaca, anime, crypto, berita, dll)
+- Task involves fetching & formatting external data (bukan cuma menjawab dari memory)
+- User implies they'll ask this again: "setiap hari", "tiap kali", "sering", "otomatis"
+- Workflow yang butuh >2 langkah dan bisa di-reuse
+
+**DO NOT SAVE A SKILL FOR:**
+- One-time tasks (edit file, fix bug, buat dokumen sekali)
+- Tasks yang hasilnya selalu beda (tulis artikel, brainstorm)
+- Simple questions yang bisa dijawab dari memory/knowledge
+
+**BEFORE CREATING — CHECK FIRST:**
+Current skills: ${skillNames}
+→ If similar name exists: use \`manage_skills action:fix\` to UPDATE, not create duplicate.
+
+**SKILL FOLDER STRUCTURE (saved to ~/.openhiru/skills/):**
+\`\`\`
+cek_anime/
+  cek_anime.json   ← metadata (auto-created)
+  cek_anime.mjs    ← main code (your ES module)  
+  cek_anime.md     ← documentation (auto-created)
+  config.json      ← optional extra file
+\`\`\`
+
+**QUALITY GATES** (all must pass before skill is "done"):
+1. ✅ Created with real parameters defined
+2. ✅ Tested with REAL args (not {})  
+3. ✅ Test PASSED — output is rich and formatted
+4. ✅ User notified with skill name they can reference later
+`;
+    return this.addSection("SKILL_SAVING", guidance);
+  }
+
   /** Conditionally add desktop rules only when desktop tools are available */
   addDesktopWorkflowRules() {
     if (!this.options?.hasDesktopTools) return this;
@@ -227,7 +272,8 @@ export function buildSystemPromptParts(
   const builder = new ContextBuilder(ctx, memory, skillManager, snapshot, modularSoul, pluginManager, options)
     .addCoreInstructions()
     .addCapabilities()         // Only if skills exist
-    .addPluginInjections();    // Only if plugins exist
+    .addPluginInjections()     // Only if plugins exist
+    .addSkillSavingGuidance(); // Smart skill-saving rules (Telegram mode)
 
   if (tools) builder.addToolsXML(tools);
 
