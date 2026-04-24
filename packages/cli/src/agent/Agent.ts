@@ -593,13 +593,23 @@ export class HiruAgent extends EventEmitter {
                return {
                  type: "tool-call",
                  toolCallId: part.toolCallId,
-                 toolName: part.toolName,
+                 toolName: part.toolName || "unknown_tool",
                  args: part.args || part.input || {}
                };
              }
              if (part.type === "text") return { type: "text", text: part.text || "" };
              return part;
-          });
+          }).filter((part: any) => part.type !== "text" || (typeof part.text === "string" && part.text.trim().length > 0));
+          
+          if (msg.content.length === 0) {
+            msg.content = "✅"; // Prevent empty array which causes AI SDK to crash
+          }
+        }
+
+        // Clean user messages: ensure text parts are not empty
+        if (msg.role === "user" && Array.isArray(msg.content)) {
+          msg.content = msg.content.filter((part: any) => part.type !== "text" || (typeof part.text === "string" && part.text.trim().length > 0));
+          if (msg.content.length === 0) msg.content = "Proceed.";
         }
 
         const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
@@ -671,6 +681,12 @@ export class HiruAgent extends EventEmitter {
         
         if (resultsForThisAssistant.length > 0) {
           sequence.push({ role: "tool", content: resultsForThisAssistant });
+        } else {
+          // AI SDK FATAL ERROR PREVENTION:
+          // If an assistant message has tool calls, but there are NO results,
+          // the AI SDK will crash. We must strip the tool calls if no results exist.
+          msg.content = msg.content.filter((p: any) => p.type !== "tool-call");
+          if (msg.content.length === 0) msg.content = "✅ Tool execution complete.";
         }
       }
     }
