@@ -603,13 +603,26 @@ export class HiruAgent extends EventEmitter {
           
           if (msg.content.length === 0) {
             msg.content = "✅"; // Prevent empty array which causes AI SDK to crash
+          } else {
+             // If ALL parts are text parts, combine them into a single string to prevent provider hallucination
+             const hasNonText = msg.content.some((p: any) => p.type !== "text");
+             if (!hasNonText) {
+                msg.content = msg.content.map((p: any) => p.text).join("\n");
+             }
           }
         }
 
         // Clean user messages: ensure text parts are not empty
         if (msg.role === "user" && Array.isArray(msg.content)) {
           msg.content = msg.content.filter((part: any) => part.type !== "text" || (typeof part.text === "string" && part.text.trim().length > 0));
-          if (msg.content.length === 0) msg.content = "Proceed.";
+          if (msg.content.length === 0) {
+            msg.content = "Proceed.";
+          } else {
+             const hasNonText = msg.content.some((p: any) => p.type !== "text");
+             if (!hasNonText) {
+                msg.content = msg.content.map((p: any) => p.text).join("\n");
+             }
+          }
         }
 
         const fp = `${msg.role}:${this.contentFingerprint(msg.content)}`;
